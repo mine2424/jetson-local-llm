@@ -15,38 +15,71 @@
 ## クイックスタート
 
 ```bash
-# 1. 依存関係チェック
+# 1. 環境確認
 bash setup/00_jetpack_check.sh
 
 # 2. Ollama インストール
 bash setup/01_install_ollama.sh
 
-# 3. 推奨モデル一括ダウンロード
+# 3. モデル一括ダウンロード
 bash setup/03_pull_models.sh
 
-# 4. 動作確認
+# 4. ベンチマーク
 bash benchmark/run_bench.sh
 ```
 
-## 対応モデル
+## ドキュメント
 
-→ [models/model_list.md](models/model_list.md) を参照
+| ドキュメント | 内容 |
+|------------|------|
+| [models/model_list.md](models/model_list.md) | 対応モデル一覧・ベンチマーク結果 |
+| [docs/lfm25_setup.md](docs/lfm25_setup.md) | LFM-2.5 セットアップ詳細 |
+| [docs/lfm25_japanese.md](docs/lfm25_japanese.md) | LFM-2.5 日本語モデル調査 |
+| [docs/api_usage.md](docs/api_usage.md) | OpenAI互換API使い方（Python/TS） |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | トラブルシューティング |
 
-## ディレクトリ構成
+## セットアップスクリプト
 
-```
-jetson-local-llm/
-├── setup/           # セットアップスクリプト
-├── models/          # モデル情報・検証結果
-├── config/          # Ollama・systemd設定
-├── benchmark/       # ベンチマークスクリプト
-└── docs/            # 詳細ドキュメント
-```
+| スクリプト | 内容 |
+|-----------|------|
+| `setup/00_jetpack_check.sh` | 環境・JetPack確認 |
+| `setup/01_install_ollama.sh` | Ollama インストール (ARM64) |
+| `setup/02_install_llamacpp.sh` | llama.cpp CUDA ビルド |
+| `setup/03_pull_models.sh` | 推奨モデル一括 pull |
+| `setup/04_setup_webui.sh` | Open WebUI (ブラウザUI) |
 
 ## 推論フレームワーク
 
-- **Ollama** (メイン) - OpenAI互換API・管理が楽
-- **llama.cpp** (チューニング) - GPU layer数の細かい制御
+- **Ollama** (メイン) — OpenAI互換API・管理が楽
+- **llama.cpp** (チューニング用) — GPU layer数の細かい制御
+
+## 対応モデル（主要）
+
+| モデル | サイズ | 日本語 | 用途 |
+|--------|--------|--------|------|
+| LFM-2.5 3B | ~2.0GB | △ | 省メモリ・高速 |
+| LFM-2.5 7B | ~4.5GB | △ | 高品質 |
+| Qwen2.5 7B | ~4.5GB | ◎ | 日本語メイン |
+| Phi-3.5 Mini | ~2.4GB | △ | コード生成 |
+| Gemma 2 2B | ~1.8GB | △ | 超軽量 |
+
+詳細 → [models/model_list.md](models/model_list.md)
+
+## 進捗
+
+- [x] リポジトリ構成・スクリプト整備
+- [x] Ollama / llama.cpp セットアップスクリプト
+- [x] 推奨モデル選定・一覧
+- [x] LFM-2.5 セットアップドキュメント
+- [x] LFM-2.5 日本語モデル調査
+- [x] OpenAI互換 API 使い方ドキュメント
+- [x] トラブルシューティングガイド
+- [x] Open WebUI セットアップ
+- [ ] Jetsonでの実機セットアップ実行
+- [ ] ベンチマーク実測値の記録
+- [ ] LFM-2.5 日本語fine-tune版の発見・検証
+- [ ] llama.cpp CUDA ビルド実機確認
+- [ ] Open WebUI 動作確認
 
 ## ライセンス
 
