@@ -118,10 +118,13 @@ docker run -d \
   -e OLLAMA_KEEP_ALIVE=5m \          # アイドル 5 分でモデルをアンロード
   -e OLLAMA_NUM_CTX=2048 \           # KV キャッシュ 3.7GB → 234MB
   -e OLLAMA_HOST=0.0.0.0:11434 \
-  -v "$HOME/.ollama:/root/.ollama" \ # モデルをホストに永続化
+  -v "$HOME/.ollama/models:/data/models/ollama/models" \  # モデルをホストに永続化
   -p 127.0.0.1:11434:11434 \
   --restart unless-stopped \
-  dustynv/ollama:r36.4.0
+  dustynv/ollama:r36.4.0 \
+  /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
+# /start_ollama はサーバをバックグラウンド起動して終了するため
+# tail -f でコンテナを生存させる
 ```
 
 | 設定 | 意味 |
@@ -308,10 +311,11 @@ docker run -d \
   -e OLLAMA_KEEP_ALIVE=5m \
   -e OLLAMA_NUM_CTX=2048 \
   -e OLLAMA_HOST=0.0.0.0:11434 \
-  -v "$HOME/.ollama:/root/.ollama" \
+  -v "$HOME/.ollama/models:/data/models/ollama/models" \
   -p 11434:11434 \
   --restart unless-stopped \
-  dustynv/ollama:r36.4.0
+  dustynv/ollama:r36.4.0 \
+  /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
 ```
 
 別マシンからは `http://<jetson-ip>:11434` でアクセスできる。
@@ -447,10 +451,11 @@ docker run -d \
   -e OLLAMA_KEEP_ALIVE=5m \
   -e OLLAMA_NUM_CTX=4096 \           # 2048 → 4096 に変更
   -e OLLAMA_HOST=0.0.0.0:11434 \
-  -v "$HOME/.ollama:/root/.ollama" \
+  -v "$HOME/.ollama/models:/data/models/ollama/models" \
   -p 127.0.0.1:11434:11434 \
   --restart unless-stopped \
-  dustynv/ollama:r36.4.0
+  dustynv/ollama:r36.4.0 \
+  /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
 ```
 
 ### vm.min_free_kbytes の確認・変更

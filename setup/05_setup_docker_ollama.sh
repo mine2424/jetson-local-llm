@@ -96,6 +96,10 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   docker start "$CONTAINER_NAME"
 else
   echo "     新規コンテナを作成します..."
+  # dustynv/ollama は OLLAMA_MODELS=/data/models/ollama/models を使う
+  # /start_ollama はサーバをバックグラウンド起動して終了するため、
+  # tail -f でコンテナを生存させる
+  mkdir -p "$HOME/.ollama/models"
   docker run -d \
     --name "$CONTAINER_NAME" \
     --runtime nvidia \
@@ -105,10 +109,11 @@ else
     -e OLLAMA_KEEP_ALIVE=5m \
     -e OLLAMA_NUM_CTX=2048 \
     -e OLLAMA_HOST=0.0.0.0:11434 \
-    -v "$HOME/.ollama:/root/.ollama" \
+    -v "$HOME/.ollama/models:/data/models/ollama/models" \
     -p 127.0.0.1:11434:11434 \
     --restart unless-stopped \
-    "$IMAGE"
+    "$IMAGE" \
+    /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
 fi
 echo "     OK: コンテナ起動済み"
 
