@@ -1,0 +1,15 @@
+# モデルファイル（大きいので除外）
+*.gguf
+*.bin
+*.safetensors
+
+# ベンチマーク結果（任意でコミット）
+benchmark/results/
+
+# OS
+.DS_Store
+*.swp
+
+# env
+.env
+*.env
