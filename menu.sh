@@ -66,17 +66,19 @@ menu_docs() {
   local choice
   choice=$(ui_menu "📖 ドキュメント" \
     "1" "🚀 クイックスタート - Ollama起動 & テスト" \
-    "2" "📋 モデル一覧" \
-    "3" "🔧 LFM-2.5 セットアップ" \
-    "4" "🌐 LFM-2.5 日本語モデル調査" \
-    "5" "📡 API 使い方 (Python/TypeScript)" \
-    "6" "🆘 トラブルシューティング" \
+    "2" "🐳 Docker Ollama - セットアップ & 使い方" \
+    "3" "📋 モデル一覧" \
+    "4" "🔧 LFM-2.5 セットアップ" \
+    "5" "🌐 LFM-2.5 日本語モデル調査" \
+    "6" "📡 API 使い方 (Python/TypeScript)" \
+    "7" "🆘 トラブルシューティング" \
     "B" "← 戻る"
   ) || return
 
   local doc_map=(
     ""                                  # dummy for index 0
     "docs/quickstart.md"
+    "docs/docker_ollama.md"
     "models/model_list.md"
     "docs/lfm25_setup.md"
     "docs/lfm25_japanese.md"
