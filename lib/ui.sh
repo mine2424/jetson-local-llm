@@ -110,3 +110,15 @@ press_any_key() {
   echo "--- Enterキーでメニューに戻る ---"
   read -r
 }
+
+# --- CUDA / NvMap メモリ確保 ---
+# NvMap は MemFree からしか割り当てられないため、ページキャッシュを解放して確保する
+cuda_memfree() {
+  local free_mb
+  free_mb=$(awk '/MemFree/ {print int($2/1024)}' /proc/meminfo)
+  if [ "$free_mb" -lt 3000 ]; then
+    ui_info "GPUメモリ確保中... (MemFree: ${free_mb}MB → キャッシュ解放)"
+    sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+    sleep 1
+  fi
+}

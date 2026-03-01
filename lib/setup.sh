@@ -13,6 +13,7 @@ menu_setup() {
       "3" "🔨 llama.cpp ビルド (CUDA対応)" \
       "4" "🌐 Open WebUI セットアップ (Docker)" \
       "5" "⚡ 電力モード設定 (7W / 15W / 25W)" \
+      "6" "🐳 Docker Ollama セットアップ (CUDA OOM 対策)" \
       "B" "← 戻る"
     ) || return
 
@@ -22,6 +23,7 @@ menu_setup() {
       3) _setup_llamacpp ;;
       4) _setup_webui ;;
       5) _setup_power ;;
+      6) _setup_docker_ollama ;;
       B) return ;;
     esac
   done
@@ -131,4 +133,33 @@ _setup_power() {
     sudo nvpmodel -m "$choice" && sudo jetson_clocks
     ui_success "電力モードを切り替えました。\n\n$(sudo nvpmodel -q 2>/dev/null)"
   fi
+}
+
+_setup_docker_ollama() {
+  if ! command -v docker &>/dev/null; then
+    ui_error "Dockerが見つかりません。\n\n以下を実行してDockerをインストールしてください:\n  curl -fsSL https://get.docker.com | sh\n  sudo usermod -aG docker \$USER"
+    return
+  fi
+
+  whiptail --title "$TITLE - Docker Ollama セットアップ" \
+    --msgbox "【Docker Ollama セットアップについて】\n\nJetson では native Ollama が CUDA OOM を起こす場合があります。\n原因: NvMap は MemFree (~1.3GB) からのみ割り当て可能で、\nページキャッシュ (MemAvailable) を再利用できません。\n\n dustynv/ollama:r36.4.0 コンテナを使うことで:\n• Jetson L4T R36.x 向けの正しい CUDA ライブラリを使用\n• vm.min_free_kbytes チューニングで MemFree 2GB 確保\n• 起動時に自動でページキャッシュを解放\n\n【実行内容】\n1. Docker デーモン有効化\n2. nvidia-container-runtime インストール確認\n3. ネイティブ Ollama サービス無効化\n4. sysctl チューニング適用\n5. dustynv/ollama:r36.4.0 コンテナ起動" \
+    $HEIGHT $WIDTH
+
+  ui_confirm "Docker Ollama セットアップを実行しますか？\n(sudo権限が必要です)" || return
+
+  local tmpfile
+  tmpfile=$(mktemp)
+  ui_info "Docker Ollama をセットアップ中...\n(完了まで数分かかる場合があります)"
+  if bash "$SCRIPT_DIR/setup/05_setup_docker_ollama.sh" 2>&1 | tee "$tmpfile"; then
+    whiptail --title "$TITLE - Docker Ollama セットアップ完了" \
+      --scrolltext \
+      --textbox "$tmpfile" $HEIGHT $WIDTH
+    ui_success "Docker Ollama セットアップが完了しました！\n\nAPI: http://localhost:11434\n\nサービス管理メニュー → ステータス確認 で動作確認できます。"
+  else
+    whiptail --title "$TITLE - セットアップログ" \
+      --scrolltext \
+      --textbox "$tmpfile" $HEIGHT $WIDTH
+    ui_error "セットアップに失敗しました。\nログを確認してください:\n  docker logs ollama"
+  fi
+  rm -f "$tmpfile"
 }

@@ -65,16 +65,18 @@ main_menu() {
 menu_docs() {
   local choice
   choice=$(ui_menu "📖 ドキュメント" \
-    "1" "📋 モデル一覧" \
-    "2" "🔧 LFM-2.5 セットアップ" \
-    "3" "🌐 LFM-2.5 日本語モデル調査" \
-    "4" "📡 API 使い方 (Python/TypeScript)" \
-    "5" "🆘 トラブルシューティング" \
+    "1" "🚀 クイックスタート - Ollama起動 & テスト" \
+    "2" "📋 モデル一覧" \
+    "3" "🔧 LFM-2.5 セットアップ" \
+    "4" "🌐 LFM-2.5 日本語モデル調査" \
+    "5" "📡 API 使い方 (Python/TypeScript)" \
+    "6" "🆘 トラブルシューティング" \
     "B" "← 戻る"
   ) || return
 
   local doc_map=(
     ""                                  # dummy for index 0
+    "docs/quickstart.md"
     "models/model_list.md"
     "docs/lfm25_setup.md"
     "docs/lfm25_japanese.md"

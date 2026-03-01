@@ -31,6 +31,14 @@ Environment="OLLAMA_NUM_GPU=1"
 Environment="OLLAMA_MODELS=/home/$USER/.ollama/models"
 # APIホスト (外部からアクセスする場合は 0.0.0.0)
 Environment="OLLAMA_HOST=127.0.0.1:11434"
+# アイドル後にGPUメモリを解放 (Jetson統合メモリ節約)
+Environment="OLLAMA_KEEP_ALIVE=5m"
+# 同時ロードモデルを1つに制限 (7B=~4.5GBのため)
+Environment="OLLAMA_MAX_LOADED_MODELS=1"
+# Flash Attention でVRAM使用量を30-40%削減
+Environment="OLLAMA_FLASH_ATTENTION=1"
+# デフォルト32768→2048に制限 (KVキャッシュ3.7GB→234MB削減)
+Environment="OLLAMA_NUM_CTX=2048"
 EOF
 
 sudo systemctl daemon-reload

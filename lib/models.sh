@@ -55,7 +55,8 @@ menu_models() {
 
 _start_ollama_bg() {
   ui_info "Ollamaを起動中..."
-  ollama serve > /tmp/ollama.log 2>&1 &
+  OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KEEP_ALIVE=5m OLLAMA_NUM_CTX=2048 \
+    ollama serve > /tmp/ollama.log 2>&1 &
   sleep 3
   if check_ollama; then
     ui_success "Ollama が起動しました"
@@ -137,8 +138,14 @@ _model_pull_select() {
 _model_pull_all() {
   ui_confirm "推奨モデルを全てダウンロードします。\n合計 10〜15GB 必要です。続けますか？" || return
 
-  bash "$SCRIPT_DIR/setup/03_pull_models.sh" 2>&1 | \
-    whiptail --title "$TITLE - モデル pull" --progressbox "ダウンロード中..." $HEIGHT $WIDTH
+  local tmpfile
+  tmpfile=$(mktemp)
+  ui_info "モデルをダウンロード中...\nしばらくお待ちください（完了まで数分かかります）"
+  bash "$SCRIPT_DIR/setup/03_pull_models.sh" > "$tmpfile" 2>&1
+  whiptail --title "$TITLE - モデル pull 結果" \
+    --scrolltext \
+    --textbox "$tmpfile" $HEIGHT $WIDTH
+  rm -f "$tmpfile"
   ui_success "推奨モデルのダウンロードが完了しました"
 }
 
@@ -237,6 +244,7 @@ _model_test() {
 
   ui_info "$target で推論中...\n(10〜30秒かかります)"
   local result
+  cuda_memfree
   result=$(ollama run "$target" "$prompt" 2>&1)
 
   whiptail --title "$TITLE - $target の応答" \
