@@ -15,18 +15,27 @@
 ## クイックスタート
 
 ```bash
+# ワンショットセットアップ（推奨）
+bash install.sh
+```
+
+これ1本で Docker Ollama の起動からスターターモデルの取得まで完了する。
+
+<details>
+<summary>個別スクリプトで実行する場合</summary>
+
+```bash
 # 1. 環境確認
 bash setup/00_jetpack_check.sh
 
-# 2. Ollama インストール
-bash setup/01_install_ollama.sh
+# 2. Docker Ollama セットアップ
+bash setup/05_setup_docker_ollama.sh
 
 # 3. モデル一括ダウンロード
 bash setup/03_pull_models.sh
-
-# 4. ベンチマーク
-bash benchmark/run_bench.sh
 ```
+
+</details>
 
 ## ドキュメント
 
@@ -42,11 +51,13 @@ bash benchmark/run_bench.sh
 
 | スクリプト | 内容 |
 |-----------|------|
+| `install.sh` | **ワンショットセットアップ（推奨）** |
 | `setup/00_jetpack_check.sh` | 環境・JetPack確認 |
-| `setup/01_install_ollama.sh` | Ollama インストール (ARM64) |
-| `setup/02_install_llamacpp.sh` | llama.cpp CUDA ビルド |
+| `setup/05_setup_docker_ollama.sh` | Docker Ollama セットアップ単体 |
 | `setup/03_pull_models.sh` | 推奨モデル一括 pull |
 | `setup/04_setup_webui.sh` | Open WebUI (ブラウザUI) |
+| `setup/01_install_ollama.sh` | ネイティブ Ollama インストール (旧) |
+| `setup/02_install_llamacpp.sh` | llama.cpp CUDA ビルド |
 
 ## 推論フレームワーク
 
