@@ -9,12 +9,14 @@ menu_service() {
     local choice
     choice=$(ui_menu "🚀 サービス管理" \
       "1" "📊 ステータス確認 (Ollama / tegrastats)" \
-      "2" "▶️  Ollama 起動" \
+      "2" "▶️  Ollama 起動 (drop_caches → docker start)" \
       "3" "⏹️  Ollama 停止" \
       "4" "🔄 Ollama 再起動" \
       "5" "📜 Ollamaログ表示" \
-      "6" "📡 API 疎通テスト" \
-      "7" "⚡ Jetson リソースモニタ (tegrastats)" \
+      "6" "💬 ollama run (インタラクティブチャット)" \
+      "7" "📡 API 疎通テスト" \
+      "8" "🐳 コンテナイメージ更新 (autotag → 再作成)" \
+      "9" "⚡ Jetson リソースモニタ (tegrastats)" \
       "B" "← 戻る"
     ) || return
 
@@ -24,8 +26,10 @@ menu_service() {
       3) _ollama_stop ;;
       4) _ollama_restart ;;
       5) _ollama_logs ;;
-      6) _api_test ;;
-      7) _tegrastats_monitor ;;
+      6) _ollama_run_interactive ;;
+      7) _api_test ;;
+      8) _container_update ;;
+      9) _tegrastats_monitor ;;
       B) return ;;
     esac
   done
@@ -190,6 +194,94 @@ _ollama_logs() {
     --textbox "$tmpfile" $HEIGHT $WIDTH
 
   rm -f "$tmpfile"
+}
+
+_ollama_run_interactive() {
+  if ! check_ollama; then
+    ui_error "Ollama API が応答しません\nまず Ollama を起動してください (項目 2)"
+    return
+  fi
+
+  local models
+  models=$(get_models)
+  if [ -z "$models" ]; then
+    ui_error "モデルがインストールされていません\nModels メニューから pull してください"
+    return
+  fi
+
+  local items=()
+  while IFS= read -r m; do
+    items+=("$m" "")
+  done <<< "$models"
+
+  local target
+  target=$(ui_menu "💬 チャットするモデルを選択" "${items[@]}") || return
+
+  clear
+  bash "$SCRIPT_DIR/ollama-run.sh" "$target"
+  press_any_key
+}
+
+_container_update() {
+  if ! command -v autotag &>/dev/null; then
+    ui_error "autotag が見つかりません\nSetup → jetson-containers セットアップを先に実行してください"
+    return
+  fi
+
+  local new_image
+  new_image=$(autotag ollama 2>/dev/null || true)
+  if [ -z "$new_image" ]; then
+    ui_error "autotag でイメージを解決できませんでした\nJetPack バージョンを確認してください"
+    return
+  fi
+
+  local current_image=""
+  if _ollama_is_docker; then
+    current_image=$(sudo docker inspect ollama --format '{{.Config.Image}}' 2>/dev/null || true)
+  fi
+
+  ui_confirm "コンテナイメージを更新します\n\n現在: ${current_image:-不明}\n新規: $new_image\n\n既存コンテナを停止・削除して再作成します。よろしいですか？" || return
+
+  clear
+  echo "── [1/4] イメージをダウンロード中: $new_image ──"
+  sudo docker pull "$new_image"
+
+  echo ""
+  echo "── [2/4] 既存コンテナを停止・削除 ──"
+  sudo docker stop ollama 2>/dev/null || true
+  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+  sudo docker rm ollama 2>/dev/null || true
+
+  echo ""
+  echo "── [3/4] 新しいコンテナを起動 ──"
+  mkdir -p "$HOME/.ollama/models"
+  sudo docker run -d \
+    --name ollama \
+    --runtime nvidia \
+    -e NVIDIA_VISIBLE_DEVICES=all \
+    -e OLLAMA_FLASH_ATTENTION=1 \
+    -e OLLAMA_MAX_LOADED_MODELS=1 \
+    -e OLLAMA_KEEP_ALIVE=5m \
+    -e OLLAMA_NUM_CTX=2048 \
+    -e OLLAMA_HOST=0.0.0.0:11434 \
+    -v "$HOME/.ollama/models:/data/models/ollama/models" \
+    -p 127.0.0.1:11434:11434 \
+    --restart unless-stopped \
+    "$new_image" \
+    /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
+
+  echo ""
+  echo "── [4/4] API 応答待ち ──"
+  local i=0
+  while [ $i -lt 10 ]; do
+    if check_ollama; then
+      ui_success "コンテナイメージの更新が完了しました\n\nイメージ: $new_image\nAPI: http://localhost:11434"
+      return
+    fi
+    sleep 3
+    i=$((i + 1))
+  done
+  ui_error "API が応答しません\nログ: sudo docker logs ollama"
 }
 
 _api_test() {
