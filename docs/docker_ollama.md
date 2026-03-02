@@ -255,6 +255,34 @@ curl -s -X POST http://localhost:11434/api/generate \
 
 ---
 
+## インタラクティブチャット (ollama run)
+
+Ollama はコンテナ内で動いているため、`ollama run` は `docker exec` 経由で使う。
+
+### ラッパースクリプト（推奨）
+
+```bash
+# 引数なし: インストール済みモデル一覧を表示
+./ollama-run.sh
+
+# モデル名を指定してインタラクティブチャット開始
+./ollama-run.sh qwen2.5:3b
+./ollama-run.sh qwen2.5:7b
+
+# 終了: /bye または Ctrl+D
+```
+
+### docker exec で直接実行
+
+```bash
+sudo docker exec -it ollama ollama run qwen2.5:3b
+```
+
+> **注意**: `-it` フラグ（インタラクティブ + TTY）が必須。
+> ターミナル以外（スクリプト内など）から呼ぶ場合は API を使う。
+
+---
+
 ## API の使い方
 
 コンテナが起動していれば `http://localhost:11434` で OpenAI 互換 API が使える。

@@ -68,6 +68,18 @@ curl -s http://localhost:11434/api/tags | python3 -m json.tool
 
 ## 3. モデルをテスト実行する
 
+### ollama run でインタラクティブチャット（最も簡単）
+
+```bash
+# ラッパースクリプトを使う
+./ollama-run.sh qwen2.5:3b
+
+# または直接 docker exec で
+sudo docker exec -it ollama ollama run qwen2.5:3b
+
+# 終了: /bye または Ctrl+D
+```
+
 ### API で直接実行
 
 ```bash

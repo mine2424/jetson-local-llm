@@ -40,71 +40,24 @@ main_menu() {
       --title "🤖 Jetson Local LLM" \
       --menu "$status_line\n\nメニューを選択:" \
       $HEIGHT $WIDTH 9 \
-      "0" "🚀 初回セットアップ - Docker Ollama をワンショットで構築" \
-      "1" "⚙️  Setup        - 環境構築・インストール" \
+      "1" "⚙️  Setup        - jetson-containers セットアップ・モデル導入" \
       "2" "📦 Models       - モデル管理 (pull / import / delete)" \
-      "3" "🚀 Service      - サービス管理 (Ollama / WebUI)" \
+      "3" "🚀 Service      - サービス管理 (Ollama 起動・停止・ログ)" \
       "4" "⚡ Benchmark    - 性能計測" \
-      "5" "📖 Docs         - ドキュメントを開く" \
       "Q" "🚪 終了" \
       3>&1 1>&2 2>&3) || break
 
     case "$choice" in
-      0) _run_install ;;
       1) menu_setup ;;
       2) menu_models ;;
       3) menu_service ;;
       4) menu_bench ;;
-      5) menu_docs ;;
       Q) break ;;
     esac
   done
 
   clear
   echo "👋 Jetson Local LLM を終了しました"
-}
-
-_run_install() {
-  clear
-  bash "$SCRIPT_DIR/install.sh"
-  press_any_key
-}
-
-menu_docs() {
-  local choice
-  choice=$(ui_menu "📖 ドキュメント" \
-    "1" "🚀 クイックスタート - Ollama起動 & テスト" \
-    "2" "🐳 Docker Ollama - セットアップ & 使い方" \
-    "3" "📋 モデル一覧" \
-    "4" "🔧 LFM-2.5 セットアップ" \
-    "5" "🌐 LFM-2.5 日本語モデル調査" \
-    "6" "📡 API 使い方 (Python/TypeScript)" \
-    "7" "🆘 トラブルシューティング" \
-    "B" "← 戻る"
-  ) || return
-
-  local doc_map=(
-    ""                                  # dummy for index 0
-    "docs/quickstart.md"
-    "docs/docker_ollama.md"
-    "models/model_list.md"
-    "docs/lfm25_setup.md"
-    "docs/lfm25_japanese.md"
-    "docs/api_usage.md"
-    "docs/troubleshooting.md"
-  )
-
-  [[ "$choice" == "B" ]] && return
-
-  local doc_file="$SCRIPT_DIR/${doc_map[$choice]}"
-
-  if [ -f "$doc_file" ]; then
-    whiptail --title "$TITLE - ドキュメント" \
-      --scrolltext \
-      --textbox "$doc_file" $HEIGHT $WIDTH
-  else
-    ui_error "ファイルが見つかりません:\n$doc_file"
-  fi
 }
 
 # ----- エントリーポイント -----

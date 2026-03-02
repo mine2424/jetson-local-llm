@@ -8,74 +8,19 @@ menu_setup() {
   while true; do
     local choice
     choice=$(ui_menu "⚙️  セットアップメニュー" \
-      "0" "🚀 ワンショットセットアップ (install.sh)" \
-      "1" "🔍 環境チェック (JetPack / CUDA / メモリ)" \
-      "2" "🧩 jetson-containers セットアップ (autotag Ollama)" \
-      "3" "🧠 LFM-2.5 セットアップ (SSM省メモリモデル)" \
-      "4" "🌐 Open WebUI セットアップ (Docker)" \
-      "5" "⚡ 電力モード設定 (7W / 15W / 25W)" \
-      "6" "💾 メモリ最適化 (SSD スワップ / ZRAM 無効化 / GUI)" \
+      "1" "🧩 jetson-containers セットアップ (autotag Ollama)" \
+      "2" "📦 jetson-containers + モデルpull (まとめてセットアップ)" \
+      "3" "🧠 LFM-2.5 セットアップ (SSM省メモリモデル・GGUF)" \
       "B" "← 戻る"
     ) || return
 
     case "$choice" in
-      0) _setup_install ;;
-      1) _setup_check ;;
-      2) _setup_jetson_containers ;;
+      1) _setup_jetson_containers ;;
+      2) _setup_jc_with_model ;;
       3) _setup_lfm ;;
-      4) _setup_webui ;;
-      5) _setup_power ;;
-      6) _setup_memory_opt ;;
       B) return ;;
     esac
   done
-}
-
-_setup_install() {
-  clear
-  bash "$SCRIPT_DIR/install.sh"
-  press_any_key
-}
-
-_setup_check() {
-  local report=""
-  report+="=== Jetson 環境チェック ===\n\n"
-
-  # JetPack
-  if [ -f /etc/nv_tegra_release ]; then
-    report+="[JetPack]\n$(cat /etc/nv_tegra_release)\n\n"
-  else
-    report+="[JetPack] ⚠️ /etc/nv_tegra_release が見つかりません\n\n"
-  fi
-
-  # CUDA
-  if command -v nvcc &>/dev/null; then
-    report+="[CUDA] $(nvcc --version | grep release)\n\n"
-  else
-    report+="[CUDA] ⚠️ nvcc が見つかりません\n\n"
-  fi
-
-  # メモリ
-  report+="[メモリ]\n$(free -h)\n\n"
-
-  # ストレージ
-  report+="[ストレージ]\n$(df -h / | tail -1)\n\n"
-
-  # 電力モード
-  if command -v nvpmodel &>/dev/null; then
-    report+="[電力モード]\n$(sudo nvpmodel -q 2>/dev/null)\n"
-  fi
-
-  # Ollama API
-  if check_ollama; then
-    report+="[Ollama API] ✅ 応答あり (http://localhost:11434)\n"
-  else
-    report+="[Ollama API] ⚠️ 未起動\n"
-  fi
-
-  whiptail --title "$TITLE - 環境チェック" \
-    --scrolltext \
-    --msgbox "$report" $HEIGHT $WIDTH
 }
 
 _setup_jetson_containers() {
@@ -84,33 +29,94 @@ _setup_jetson_containers() {
   press_any_key
 }
 
-_setup_memory_opt() {
+_setup_jc_with_model() {
+  # Step 1: jetson-containers セットアップ
   clear
-  bash "$SCRIPT_DIR/setup/07_setup_memory_opt.sh"
+  bash "$SCRIPT_DIR/setup/08_setup_jetson_containers.sh"
+  local rc=$?
   press_any_key
-}
+  [ $rc -ne 0 ] && return
 
-_setup_webui() {
-  if ! command -v docker &>/dev/null; then
-    ui_error "Dockerが見つかりません。\n\n以下を実行してDockerをインストールしてください:\n  curl -fsSL https://get.docker.com | sh\n  sudo usermod -aG docker \$USER"
+  # Ollama API が応答しているか確認
+  if ! check_ollama; then
+    ui_error "Ollama API が応答しません\njetson-containers のセットアップを確認してください"
     return
   fi
 
-  if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
-    local ip
-    ip=$(hostname -I | awk '{print $1}')
-    ui_msg "Open WebUI" "既に起動しています！\n\n→ http://localhost:8080\n→ http://${ip}:8080 (LAN)"
+  # Step 2: モデル選択 & pull
+  # LFM-2.5 は Ollama API では pull 不可 (古いバージョン) → GGUF インポートで別処理
+  local items=(
+    "qwen2.5:3b"  "Qwen2.5 3B   | 軽量日本語       | ~2.0GB" "ON"
+    "qwen2.5:7b"  "Qwen2.5 7B   | 日本語最強クラス | ~4.5GB" "OFF"
+    "gemma2:2b"   "Gemma 2 2B   | 超軽量バックアップ| ~1.8GB" "OFF"
+    "phi3.5:mini" "Phi-3.5 Mini | コード生成       | ~2.4GB" "OFF"
+    "llama3.2:3b" "Llama 3.2 3B | 英語汎用         | ~2.2GB" "OFF"
+    "mistral:7b"  "Mistral 7B   | 汎用・品質高     | ~4.1GB" "OFF"
+    "LFM-2.5"     "LFM-2.5 1.2B | SSM軽量 (GGUF)  | ~0.7GB" "OFF"
+  )
+
+  local selected
+  selected=$(ui_checklist "ダウンロードするモデルを選択 (スペースで選択)" "${items[@]}") || return
+
+  if [ -z "$selected" ]; then
+    ui_msg "情報" "モデルが選択されませんでした"
     return
   fi
 
-  ui_confirm "Open WebUI (Docker) を起動しますか？\n(初回はイメージのダウンロードがあります)" || return
-  ui_info "Open WebUI を起動中..."
-  if bash "$SCRIPT_DIR/setup/04_setup_webui.sh" > /tmp/webui.log 2>&1; then
-    local ip
-    ip=$(hostname -I | awk '{print $1}')
-    ui_success "Open WebUI 起動完了！\n\nブラウザで開く:\n→ http://localhost:8080\n→ http://${ip}:8080 (LAN内)"
+  # API pull モデルと LFM-2.5 を分離
+  local failed=()
+  local lfm_requested=false
+
+  for model in $selected; do
+    model=$(echo "$model" | tr -d '"')
+
+    if [ "$model" = "LFM-2.5" ]; then
+      lfm_requested=true
+      continue
+    fi
+
+    ui_info "pull中: $model\n\nOllama API 経由でダウンロード中..."
+    local logfile="/tmp/pull_setup_$$.log"
+    local last_status
+    last_status=$(curl -s -X POST http://localhost:11434/api/pull \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"$model\"}" \
+      2>&1 | tee "$logfile" | python3 -c "
+import sys, json
+last = ''
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        last = d.get('status', '')
+        if 'error' in d:
+            last = 'error: ' + d['error']
+    except:
+        pass
+print(last)" 2>/dev/null || echo "error")
+    rm -f "$logfile"
+    [ "$last_status" != "success" ] && failed+=("$model")
+  done
+
+  # LFM-2.5: GGUF インポート (HuggingFace からダウンロード → /api/create)
+  if [ "$lfm_requested" = true ]; then
+    clear
+    bash "$SCRIPT_DIR/setup/06_setup_lfm.sh"
+    press_any_key
+  fi
+
+  # 最終結果
+  local installed
+  installed=$(curl -s http://localhost:11434/api/tags 2>/dev/null | \
+    python3 -c "import sys,json; [print(' •', m['name']) for m in json.load(sys.stdin).get('models',[])]" \
+    2>/dev/null || echo "  (取得失敗)")
+
+  if [ ${#failed[@]} -eq 0 ]; then
+    ui_success "セットアップ完了！\n\nインストール済みモデル:\n$installed\n\n次のステップ:\n  ./ollama-run.sh qwen2.5:3b  # インタラクティブチャット\n  bash menu.sh → 3. Service   # サービス管理"
   else
-    ui_error "起動に失敗しました。\nログ: /tmp/webui.log"
+    ui_error "以下のモデルのダウンロードに失敗しました:\n${failed[*]}\n\nインストール済み:\n$installed"
   fi
 }
 
@@ -124,16 +130,3 @@ _setup_lfm() {
   press_any_key
 }
 
-_setup_power() {
-  local choice
-  choice=$(ui_menu "⚡ 電力モード選択" \
-    "0" "MAXN     - 25W (最高性能・推論向け)" \
-    "1" "MODE_15W - 15W (バランス)" \
-    "2" "MODE_7W  - 7W  (省電力)" \
-  ) || return
-
-  if ui_confirm "電力モード $choice に切り替えます。よろしいですか？"; then
-    sudo nvpmodel -m "$choice" && sudo jetson_clocks
-    ui_success "電力モードを切り替えました。\n\n$(sudo nvpmodel -q 2>/dev/null)"
-  fi
-}

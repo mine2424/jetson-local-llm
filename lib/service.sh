@@ -8,15 +8,13 @@ menu_service() {
   while true; do
     local choice
     choice=$(ui_menu "🚀 サービス管理" \
-      "1" "📊 ステータス確認 (Ollama / WebUI / tegrastats)" \
+      "1" "📊 ステータス確認 (Ollama / tegrastats)" \
       "2" "▶️  Ollama 起動" \
       "3" "⏹️  Ollama 停止" \
       "4" "🔄 Ollama 再起動" \
       "5" "📜 Ollamaログ表示" \
-      "6" "▶️  Open WebUI 起動" \
-      "7" "⏹️  Open WebUI 停止" \
-      "8" "📡 API 疎通テスト" \
-      "9" "⚡ Jetson リソースモニタ (tegrastats)" \
+      "6" "📡 API 疎通テスト" \
+      "7" "⚡ Jetson リソースモニタ (tegrastats)" \
       "B" "← 戻る"
     ) || return
 
@@ -26,10 +24,8 @@ menu_service() {
       3) _ollama_stop ;;
       4) _ollama_restart ;;
       5) _ollama_logs ;;
-      6) _webui_start ;;
-      7) _webui_stop ;;
-      8) _api_test ;;
-      9) _tegrastats_monitor ;;
+      6) _api_test ;;
+      7) _tegrastats_monitor ;;
       B) return ;;
     esac
   done
@@ -84,19 +80,6 @@ except:
     fi
   else
     report+="[Ollama API]     ⚠️ 応答なし (port 11434)\n"
-  fi
-
-  # Open WebUI (Docker)
-  if command -v docker &>/dev/null; then
-    if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
-      local ip
-      ip=$(hostname -I | awk '{print $1}')
-      report+="[Open WebUI]     ✅ 稼働中 → http://${ip}:8080\n"
-    else
-      report+="[Open WebUI]     ⏹️ 停止\n"
-    fi
-  else
-    report+="[Open WebUI]     ℹ️ Docker未インストール\n"
   fi
 
   # メモリ
@@ -207,45 +190,6 @@ _ollama_logs() {
     --textbox "$tmpfile" $HEIGHT $WIDTH
 
   rm -f "$tmpfile"
-}
-
-_webui_start() {
-  if ! command -v docker &>/dev/null; then
-    ui_error "Docker がインストールされていません"
-    return
-  fi
-
-  if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
-    local ip
-    ip=$(hostname -I | awk '{print $1}')
-    ui_msg "Open WebUI" "既に起動しています\n→ http://${ip}:8080"
-    return
-  fi
-
-  # コンテナが存在する（停止中）場合は start、なければ run
-  if sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
-    ui_info "Open WebUI を再起動中..."
-    sudo docker start open-webui > /dev/null 2>&1
-  else
-    ui_info "Open WebUI を起動中（初回はイメージDL）..."
-    bash "$SCRIPT_DIR/setup/04_setup_webui.sh" > /tmp/webui.log 2>&1
-  fi
-
-  sleep 2
-  local ip
-  ip=$(hostname -I | awk '{print $1}')
-  ui_success "Open WebUI が起動しました！\n\n→ http://localhost:8080\n→ http://${ip}:8080 (LAN)"
-}
-
-_webui_stop() {
-  if ! sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
-    ui_msg "Open WebUI" "起動していません"
-    return
-  fi
-
-  ui_confirm "Open WebUI を停止しますか？" || return
-  sudo docker stop open-webui > /dev/null 2>&1
-  ui_success "Open WebUI を停止しました"
 }
 
 _api_test() {
