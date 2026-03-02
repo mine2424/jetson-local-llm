@@ -99,6 +99,14 @@ sudo systemctl restart docker
 sleep 2
 ok "Docker daemon 起動済み"
 
+# docker グループにユーザーを追加（再ログイン後に sudo 不要になる）
+if ! groups "$USER" | grep -q '\bdocker\b'; then
+  sudo usermod -aG docker "$USER"
+  ok "docker グループに $USER を追加しました (再ログイン後に sudo 不要)"
+else
+  ok "docker グループ: 設定済み"
+fi
+
 echo ""
 
 # ─── 3. NvMap メモリ最適化 ───────────────────────────────────────────────────
@@ -132,16 +140,16 @@ echo ""
 echo "── [3/5] Ollama コンテナ ──"
 
 # 既存コンテナの処理
-if docker ps -a --format '{{.Names}}' | grep -q "^ollama$"; then
+if sudo docker ps -a --format '{{.Names}}' | grep -q "^ollama$"; then
   info "既存の ollama コンテナを削除して作り直します..."
-  docker stop ollama 2>/dev/null || true
-  docker rm ollama 2>/dev/null || true
+  sudo docker stop ollama 2>/dev/null || true
+  sudo docker rm ollama 2>/dev/null || true
 fi
 
 mkdir -p "$HOME/.ollama/models"
 
 info "コンテナを起動中: $OLLAMA_IMAGE"
-docker run -d \
+sudo docker run -d \
   --name ollama \
   --runtime nvidia \
   -e NVIDIA_VISIBLE_DEVICES=all \
@@ -173,7 +181,7 @@ echo ""
 echo "── [4/5] スターターモデル ──"
 
 info "モデルをダウンロード中: $STARTER_MODEL (~2GB)"
-if docker exec ollama ollama pull "$STARTER_MODEL"; then
+if sudo docker exec ollama ollama pull "$STARTER_MODEL"; then
   ok "$STARTER_MODEL ダウンロード完了"
 else
   err "モデルのダウンロードに失敗しました (あとで ollama pull $STARTER_MODEL を実行してください)"
@@ -186,12 +194,12 @@ echo "── [5/5] Open WebUI ──"
 
 read -r -p "Open WebUI (ブラウザ管理画面) もセットアップしますか？ [y/N] " ans
 if [[ "$ans" =~ ^[Yy]$ ]]; then
-  if docker ps -a --format '{{.Names}}' | grep -q "^open-webui$"; then
+  if sudo docker ps -a --format '{{.Names}}' | grep -q "^open-webui$"; then
     info "既存の open-webui コンテナを起動します..."
-    docker start open-webui > /dev/null 2>&1
+    sudo docker start open-webui > /dev/null 2>&1
   else
     info "Open WebUI コンテナを起動中: $WEBUI_IMAGE"
-    docker run -d \
+    sudo docker run -d \
       --name open-webui \
       --network host \
       --restart always \
@@ -213,7 +221,7 @@ echo -e "  ${GREEN}セットアップ完了！${NC}"
 echo "══════════════════════════════════════════════"
 echo ""
 echo "  コンテナ状態:"
-docker ps --format "    {{.Names}}\t{{.Status}}" --filter "name=ollama" --filter "name=open-webui"
+sudo docker ps --format "    {{.Names}}\t{{.Status}}" --filter "name=ollama" --filter "name=open-webui"
 echo ""
 echo "  すぐ試す:"
 echo "    ollama run $STARTER_MODEL 'こんにちは'"

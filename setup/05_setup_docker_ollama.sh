@@ -58,7 +58,7 @@ sleep 2
 
 # --- 3. nvidia-smi スモークテスト (任意) ---
 echo "[3/8] NVIDIA ランタイム検証中..."
-if docker run --rm --runtime nvidia dustynv/l4t-base:r36.4.0 nvidia-smi &>/dev/null; then
+if sudo docker run --rm --runtime nvidia dustynv/l4t-base:r36.4.0 nvidia-smi &>/dev/null; then
   echo "     OK: nvidia-smi が GPU を検出しました"
 else
   echo "     [警告] スモークテスト失敗。GPU アクセスを確認してください"
@@ -91,16 +91,16 @@ echo "     OK: MemFree = ${local_free_mb}MB"
 echo "[7/8] Ollama コンテナを作成・起動中..."
 echo "     イメージ: $IMAGE"
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   echo "     既存コンテナ '${CONTAINER_NAME}' を起動します..."
-  docker start "$CONTAINER_NAME"
+  sudo docker start "$CONTAINER_NAME"
 else
   echo "     新規コンテナを作成します..."
   # dustynv/ollama は OLLAMA_MODELS=/data/models/ollama/models を使う
   # /start_ollama はサーバをバックグラウンド起動して終了するため、
   # tail -f でコンテナを生存させる
   mkdir -p "$HOME/.ollama/models"
-  docker run -d \
+  sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --runtime nvidia \
     -e NVIDIA_VISIBLE_DEVICES=all \
@@ -126,7 +126,7 @@ for i in $(seq 1 10); do
     echo ""
     echo "Ollama API: http://localhost:11434"
     echo "コンテナ状態:"
-    docker ps --filter "name=^${CONTAINER_NAME}$" --format "  {{.Names}}\t{{.Status}}"
+    sudo docker ps --filter "name=^${CONTAINER_NAME}$" --format "  {{.Names}}\t{{.Status}}"
     echo ""
     echo "次のステップ:"
     echo "  ollama pull qwen2.5:3b    # 軽量モデルをダウンロード"

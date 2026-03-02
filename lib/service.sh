@@ -39,7 +39,7 @@ menu_service() {
 
 # Docker コンテナ "ollama" が存在するか確認する
 _ollama_is_docker() {
-  docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"
+  sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"
 }
 
 _service_status() {
@@ -47,7 +47,7 @@ _service_status() {
 
   # Ollama Docker コンテナ
   if command -v docker &>/dev/null; then
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"; then
+    if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"; then
       local cstatus
       cstatus=$(docker ps --filter "name=^ollama$" --format "{{.Status}}" 2>/dev/null)
       report+="[Ollama Docker]  ✅ 稼働中 ($cstatus)\n"
@@ -85,7 +85,7 @@ _service_status() {
 
   # Open WebUI (Docker)
   if command -v docker &>/dev/null; then
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
+    if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
       local ip
       ip=$(hostname -I | awk '{print $1}')
       report+="[Open WebUI]     ✅ 稼働中 → http://${ip}:8080\n"
@@ -120,7 +120,7 @@ _ollama_start() {
   if _ollama_is_docker; then
     ui_info "Ollama (Docker) を起動中...\nページキャッシュを解放してGPUメモリを確保します"
     sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
-    docker start ollama
+    sudo docker start ollama
     sleep 3
   elif systemctl list-unit-files | grep -q ollama; then
     ui_info "Ollamaをsystemdで起動中..."
@@ -151,7 +151,7 @@ _ollama_stop() {
   done
 
   if _ollama_is_docker; then
-    docker stop ollama
+    sudo docker stop ollama
   elif systemctl list-unit-files | grep -q ollama; then
     sudo systemctl stop ollama
   else
@@ -169,10 +169,10 @@ _ollama_stop() {
 _ollama_restart() {
   ui_info "Ollamaを再起動中...\nページキャッシュを解放してGPUメモリを確保します"
   if _ollama_is_docker; then
-    docker stop ollama 2>/dev/null || true
+    sudo docker stop ollama 2>/dev/null || true
     sleep 1
     sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
-    docker start ollama
+    sudo docker start ollama
     sleep 3
   elif systemctl list-unit-files | grep -q ollama; then
     sudo systemctl restart ollama
@@ -197,7 +197,7 @@ _ollama_logs() {
   tmpfile=$(mktemp)
 
   if _ollama_is_docker; then
-    docker logs --tail 50 ollama > "$tmpfile" 2>&1
+    sudo docker logs --tail 50 ollama > "$tmpfile" 2>&1
   elif systemctl list-unit-files | grep -q ollama; then
     journalctl -u ollama -n 50 --no-pager > "$tmpfile" 2>&1
   else
@@ -218,7 +218,7 @@ _webui_start() {
     return
   fi
 
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
+  if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
     local ip
     ip=$(hostname -I | awk '{print $1}')
     ui_msg "Open WebUI" "既に起動しています\n→ http://${ip}:8080"
@@ -226,9 +226,9 @@ _webui_start() {
   fi
 
   # コンテナが存在する（停止中）場合は start、なければ run
-  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
+  if sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q open-webui; then
     ui_info "Open WebUI を再起動中..."
-    docker start open-webui > /dev/null 2>&1
+    sudo docker start open-webui > /dev/null 2>&1
   else
     ui_info "Open WebUI を起動中（初回はイメージDL）..."
     bash "$SCRIPT_DIR/setup/04_setup_webui.sh" > /tmp/webui.log 2>&1
@@ -247,7 +247,7 @@ _webui_stop() {
   fi
 
   ui_confirm "Open WebUI を停止しますか？" || return
-  docker stop open-webui > /dev/null 2>&1
+  sudo docker stop open-webui > /dev/null 2>&1
   ui_success "Open WebUI を停止しました"
 }
 

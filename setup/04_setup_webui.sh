@@ -15,7 +15,7 @@ fi
 
 # Open WebUI コンテナ起動
 # --network=host でローカルのOllamaに接続
-docker run -d \
+sudo docker run -d \
   --name open-webui \
   --network=host \
   --restart=always \
