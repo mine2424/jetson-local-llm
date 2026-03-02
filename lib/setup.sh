@@ -8,25 +8,33 @@ menu_setup() {
   while true; do
     local choice
     choice=$(ui_menu "⚙️  セットアップメニュー" \
+      "0" "🚀 ワンショットセットアップ (install.sh)" \
       "1" "🔍 環境チェック (JetPack / CUDA / メモリ)" \
-      "2" "📦 Ollama インストール / 更新" \
-      "3" "🔨 llama.cpp ビルド (CUDA対応)" \
-      "4" "🌐 Open WebUI セットアップ (Docker)" \
-      "5" "⚡ 電力モード設定 (7W / 15W / 25W)" \
-      "6" "🐳 Docker Ollama セットアップ (CUDA OOM 対策)" \
+      "2" "🐳 Docker Ollama セットアップ" \
+      "3" "🌐 Open WebUI セットアップ (Docker)" \
+      "4" "⚡ 電力モード設定 (7W / 15W / 25W)" \
+      "5" "📦 Ollama インストール / 更新 (ネイティブ・旧)" \
+      "6" "🔨 llama.cpp ビルド (CUDA対応)" \
       "B" "← 戻る"
     ) || return
 
     case "$choice" in
+      0) _setup_install ;;
       1) _setup_check ;;
-      2) _setup_ollama ;;
-      3) _setup_llamacpp ;;
-      4) _setup_webui ;;
-      5) _setup_power ;;
-      6) _setup_docker_ollama ;;
+      2) _setup_docker_ollama ;;
+      3) _setup_webui ;;
+      4) _setup_power ;;
+      5) _setup_ollama ;;
+      6) _setup_llamacpp ;;
       B) return ;;
     esac
   done
+}
+
+_setup_install() {
+  clear
+  bash "$SCRIPT_DIR/install.sh"
+  press_any_key
 }
 
 _setup_check() {

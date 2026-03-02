@@ -39,7 +39,8 @@ main_menu() {
     choice=$(whiptail \
       --title "🤖 Jetson Local LLM" \
       --menu "$status_line\n\nメニューを選択:" \
-      $HEIGHT $WIDTH 8 \
+      $HEIGHT $WIDTH 9 \
+      "0" "🚀 初回セットアップ - Docker Ollama をワンショットで構築" \
       "1" "⚙️  Setup        - 環境構築・インストール" \
       "2" "📦 Models       - モデル管理 (pull / import / delete)" \
       "3" "🚀 Service      - サービス管理 (Ollama / WebUI)" \
@@ -49,6 +50,7 @@ main_menu() {
       3>&1 1>&2 2>&3) || break
 
     case "$choice" in
+      0) _run_install ;;
       1) menu_setup ;;
       2) menu_models ;;
       3) menu_service ;;
@@ -60,6 +62,12 @@ main_menu() {
 
   clear
   echo "👋 Jetson Local LLM を終了しました"
+}
+
+_run_install() {
+  clear
+  bash "$SCRIPT_DIR/install.sh"
+  press_any_key
 }
 
 menu_docs() {
