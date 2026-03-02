@@ -1,107 +1,133 @@
 # トラブルシューティング
 
-## Ollama
+## Ollama (Docker コンテナ)
 
-### ❌ `ollama: command not found`
+### ❌ コンテナが起動しない
 
 ```bash
-# インストール確認
-which ollama
-ls /usr/local/bin/ollama
+# ログ確認
+sudo docker logs ollama
 
-# 再インストール
-bash setup/01_install_ollama.sh
+# コンテナの状態
+sudo docker ps -a --filter name=ollama
+
+# nvidia runtime が効いているか確認
+sudo docker run --rm --runtime nvidia ubuntu nvidia-smi
+
+# daemon.json 確認
+cat /etc/docker/daemon.json
+sudo systemctl restart docker
+```
+
+### ❌ API が応答しない
+
+```bash
+# コンテナが実行中か確認
+sudo docker ps --filter name=ollama
+
+# ポート確認
+ss -tlnp | grep 11434
+
+# コンテナ内 Ollama プロセス確認
+sudo docker exec ollama ps aux | grep ollama
+
+# 再起動
+sudo docker stop ollama
+sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'
+sudo docker start ollama
 ```
 
 ### ❌ モデルのロードが遅い / OOMで落ちる
 
 ```bash
-# 現在のメモリ状況確認
-free -h
-tegrastats  # リアルタイム GPU/CPU/RAM モニタ
+# MemFree を確認 (NvMap に必要)
+grep MemFree /proc/meminfo
+# → 2GB 以上ないと OOM になる
 
-# 解決策: 軽量モデルに切り替え
-ollama stop qwen2.5:7b
-ollama run gemma2:2b  # まず動作確認
+# ページキャッシュを解放してから再起動
+sudo docker stop ollama
+sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'
+grep MemFree /proc/meminfo   # 3GB 以上あれば OK
+sudo docker start ollama
+
+# より小さいモデルに切り替え
+# 7B → 3B, 3B → 2B
 ```
 
-**原因**: 8GB共有メモリの実効使用可能量は~5〜6GB。大きいモデルはQ4量子化でも足りない場合あり。
+**原因**: 8GB共有メモリの実効使用可能量は~5〜6GB。NvMap は MemFree のみ使用可能。
 
-### ❌ `Error: model requires more system memory`
-
-```bash
-# 電力モード確認（25W最大に設定）
-sudo nvpmodel -m 0     # MAXN (25W)
-sudo jetson_clocks     # クロック最大化
-
-# それでも無理なら一段小さいモデルへ
-# 7B → 3B, 3B → 1B
-```
-
-### ❌ Ollama APIが応答しない
+### ❌ GPU が使われていない
 
 ```bash
-# サービス状態確認
-sudo systemctl status ollama
+# tegrastats で GR3D_FREQ を確認
+tegrastats --interval 1000
+# GR3D_FREQ が 0% = GPU 未使用 (CPU推論になっている)
 
-# ポート確認
-ss -tlnp | grep 11434
+# ロード中モデルの確認 (API)
+curl -s http://localhost:11434/api/ps | python3 -m json.tool
+# size_vram が 0 なら GPU に乗っていない
 
-# 再起動
-sudo systemctl restart ollama
-
-# ログ確認
-journalctl -u ollama -n 50
+# 対処: drop_caches → 再起動
+sudo docker stop ollama
+sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'
+sudo docker start ollama
 ```
 
 ---
 
-## llama.cpp
+## autotag / jetson-containers
 
-### ❌ CUDA が使われていない (GPU: 0%)
+### ❌ `autotag: command not found`
 
 ```bash
-# ビルド時にCUDA有効になってるか確認
-ls ~/llama.cpp/build/bin/llama-cli
-ldd ~/llama.cpp/build/bin/llama-cli | grep cuda
+# PATH を確認
+ls ~/.local/bin/autotag
 
-# -ngl フラグを確認 (省略するとCPUのみ)
-llama-cli -m model.gguf -p "test" -ngl 999
+# PATH 追加
+export PATH="$HOME/.local/bin:$PATH"
+
+# それでも見つからない場合は再インストール
+bash ~/jetson-containers/install.sh
 ```
 
-### ❌ `CUDA error: out of memory`
+### ❌ autotag がイメージを解決できない
 
 ```bash
-# GPU layerを減らす
-llama-cli -m model.gguf -p "test" -ngl 20  # 一部だけGPUに乗せる
+# JetPack バージョン確認
+cat /etc/nv_tegra_release
 
-# Ollamaが同時起動してたら止める
-sudo systemctl stop ollama
+# autotag のデバッグ出力
+autotag ollama 2>&1
+
+# jetson-containers を最新に更新
+cd ~/jetson-containers && git pull
 ```
 
 ---
 
 ## モデルダウンロード
 
+### ❌ pull が途中で止まる / 失敗する
+
+```bash
+# API経由で再送 (Ollama が再開点から継続)
+curl -X POST http://localhost:11434/api/pull \
+  -d '{"name": "qwen2.5:7b"}'
+
+# 進捗の確認
+# 上記コマンドはNDJSONストリームで進捗を返す
+```
+
 ### ❌ HuggingFace ダウンロードが遅い / 途中で落ちる
 
 ```bash
 # レジューム対応ダウンロード
-pip3 install huggingface_hub[cli]
+pip3 install huggingface_hub
 huggingface-cli download \
   bartowski/Qwen2.5-7B-Instruct-GGUF \
   Qwen2.5-7B-Instruct-Q4_K_M.gguf \
-  --local-dir ~/models \
+  --local-dir ~/.ollama/models/imports \
   --resume-download
-```
-
-### ❌ `ollama pull` が途中で止まる
-
-```bash
-# Ollama自体がhttps接続をリトライしてくれる
-# 単純に再実行
-ollama pull qwen2.5:7b
-# 再開点から継続される
 ```
 
 ---
@@ -137,4 +163,15 @@ cat /sys/devices/virtual/thermal/thermal_zone*/temp
 
 # ファンを最大に
 sudo sh -c 'echo 255 > /sys/devices/platform/pwm-fan/hwmon/hwmon*/pwm1'
+```
+
+### vm.min_free_kbytes の確認
+
+```bash
+# 現在の設定確認
+sysctl vm.min_free_kbytes
+# → 2097152 (2GB) が設定されていればOK
+
+# 設定ファイル確認
+cat /etc/sysctl.d/99-ollama-jetson.conf
 ```

@@ -7,17 +7,18 @@
 # 実行内容:
 #   1. 環境チェック (JetPack / Docker / CUDA)
 #   2. Docker nvidia runtime 設定
-#   3. NvMap メモリ最適化 (vm.min_free_kbytes)
-#   4. Ollama コンテナ起動 (dustynv/ollama:r36.4.0)
-#   5. スターターモデル pull (qwen2.5:3b)
-#   6. Open WebUI 起動 (オプション)
+#   3. jetson-containers インストール (autotag コマンド)
+#   4. NvMap メモリ最適化 (vm.min_free_kbytes)
+#   5. autotag でイメージ解決 → Ollama コンテナ起動
+#   6. スターターモデル pull (Ollama API 経由)
+#   7. Open WebUI 起動 (オプション)
 
 set -e
 
 # ─── 定数 ────────────────────────────────────────────────────────────────────
-OLLAMA_IMAGE="dustynv/ollama:r36.4.0"
-WEBUI_IMAGE="ghcr.io/open-webui/open-webui:main"
 STARTER_MODEL="qwen2.5:3b"
+WEBUI_IMAGE="ghcr.io/open-webui/open-webui:main"
+JC_DIR="$HOME/jetson-containers"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}[OK]${NC} $*"; }
@@ -51,6 +52,13 @@ if ! command -v docker &>/dev/null; then
 fi
 ok "Docker: $(docker --version | cut -d' ' -f3 | tr -d ',')"
 
+# git (jetson-containers に必要)
+if ! command -v git &>/dev/null; then
+  err "git が見つかりません: sudo apt install git"
+  exit 1
+fi
+ok "git: $(git --version)"
+
 # メモリ
 MEM_TOTAL=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 MEM_FREE=$(awk '/MemFree/  {print int($2/1024)}' /proc/meminfo)
@@ -63,7 +71,7 @@ ok "ストレージ空き: ${DISK_FREE}"
 echo ""
 
 # ─── 2. Docker daemon - nvidia runtime 設定 ──────────────────────────────────
-echo "── [1/5] Docker nvidia runtime ──"
+echo "── [1/6] Docker nvidia runtime ──"
 
 # nvidia-container-runtime
 if ! command -v nvidia-container-runtime &>/dev/null; then
@@ -99,7 +107,7 @@ sudo systemctl restart docker
 sleep 2
 ok "Docker daemon 起動済み"
 
-# docker グループにユーザーを追加（再ログイン後に sudo 不要になる）
+# docker グループにユーザーを追加
 if ! groups "$USER" | grep -q '\bdocker\b'; then
   sudo usermod -aG docker "$USER"
   ok "docker グループに $USER を追加しました (再ログイン後に sudo 不要)"
@@ -109,8 +117,30 @@ fi
 
 echo ""
 
-# ─── 3. NvMap メモリ最適化 ───────────────────────────────────────────────────
-echo "── [2/5] NvMap メモリ最適化 ──"
+# ─── 3. jetson-containers インストール ────────────────────────────────────────
+echo "── [2/6] jetson-containers (autotag) ──"
+
+if [ ! -d "$JC_DIR" ]; then
+  info "jetson-containers をクローン中..."
+  git clone --depth=1 https://github.com/dusty-nv/jetson-containers "$JC_DIR"
+  ok "クローン完了: $JC_DIR"
+else
+  ok "jetson-containers は既にクローン済み: $JC_DIR"
+fi
+
+if ! command -v autotag &>/dev/null; then
+  info "jetson-containers install.sh を実行中..."
+  bash "$JC_DIR/install.sh"
+  export PATH="$HOME/.local/bin:$PATH"
+  ok "autotag: インストール完了"
+else
+  ok "autotag: インストール済み"
+fi
+
+echo ""
+
+# ─── 4. NvMap メモリ最適化 ───────────────────────────────────────────────────
+echo "── [3/6] NvMap メモリ最適化 ──"
 
 sudo tee /etc/sysctl.d/99-ollama-jetson.conf > /dev/null <<'EOF'
 # Jetson NvMap 用に MemFree を常時 2GB 確保する
@@ -136,8 +166,16 @@ ok "MemFree = ${MEM_FREE}MB"
 
 echo ""
 
-# ─── 4. Ollama コンテナ起動 ──────────────────────────────────────────────────
-echo "── [3/5] Ollama コンテナ ──"
+# ─── 5. autotag でイメージ解決 → Ollama コンテナ起動 ─────────────────────────
+echo "── [4/6] Ollama コンテナ (autotag) ──"
+
+IMAGE=$(autotag ollama 2>/dev/null || true)
+if [ -z "$IMAGE" ]; then
+  err "autotag が ollama イメージを解決できませんでした"
+  err "JetPack バージョンを確認してください: cat /etc/nv_tegra_release"
+  exit 1
+fi
+ok "使用イメージ: $IMAGE"
 
 # 既存コンテナの処理
 if sudo docker ps -a --format '{{.Names}}' | grep -q "^ollama$"; then
@@ -148,7 +186,7 @@ fi
 
 mkdir -p "$HOME/.ollama/models"
 
-info "コンテナを起動中: $OLLAMA_IMAGE"
+info "コンテナを起動中: $IMAGE"
 sudo docker run -d \
   --name ollama \
   --runtime nvidia \
@@ -161,7 +199,7 @@ sudo docker run -d \
   -v "$HOME/.ollama/models:/data/models/ollama/models" \
   -p 127.0.0.1:11434:11434 \
   --restart unless-stopped \
-  "$OLLAMA_IMAGE" \
+  "$IMAGE" \
   /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
 
 # API が応答するまで待機
@@ -171,26 +209,54 @@ for i in $(seq 1 15); do
     ok "Ollama API 起動完了 (http://localhost:11434)"
     break
   fi
-  [ "$i" -eq 15 ] && { err "API が応答しません: docker logs ollama を確認してください"; exit 1; }
+  [ "$i" -eq 15 ] && { err "API が応答しません: sudo docker logs ollama を確認してください"; exit 1; }
   sleep 2
 done
 
 echo ""
 
-# ─── 5. スターターモデル pull ────────────────────────────────────────────────
-echo "── [4/5] スターターモデル ──"
+# ─── 6. スターターモデル pull (API経由) ──────────────────────────────────────
+echo "── [5/6] スターターモデル ──"
 
 info "モデルをダウンロード中: $STARTER_MODEL (~2GB)"
-if sudo docker exec ollama ollama pull "$STARTER_MODEL"; then
+echo "  (Ollama API 経由)"
+
+pull_result=$(curl -s -X POST http://localhost:11434/api/pull \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"$STARTER_MODEL\"}" \
+  2>&1 | python3 -c "
+import sys, json
+last = ''
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        s = d.get('status', '')
+        if 'total' in d and d['total'] > 0:
+            pct = int(d.get('completed', 0) / d['total'] * 100)
+            print(f'\r  {s}: {pct}%', end='', flush=True)
+        elif s:
+            print(f'  {s}')
+        last = d.get('status', last)
+    except:
+        pass
+print()
+print(last)
+" 2>&1 | tail -1 || echo "error")
+
+if [ "$pull_result" = "success" ]; then
   ok "$STARTER_MODEL ダウンロード完了"
 else
-  err "モデルのダウンロードに失敗しました (あとで ollama pull $STARTER_MODEL を実行してください)"
+  err "モデルのダウンロードに失敗しました (あとで pull できます)"
+  err "  curl -X POST http://localhost:11434/api/pull -d '{\"name\":\"$STARTER_MODEL\"}'"
 fi
 
 echo ""
 
-# ─── 6. Open WebUI (オプション) ──────────────────────────────────────────────
-echo "── [5/5] Open WebUI ──"
+# ─── 7. Open WebUI (オプション) ──────────────────────────────────────────────
+echo "── [6/6] Open WebUI ──"
 
 read -r -p "Open WebUI (ブラウザ管理画面) もセットアップしますか？ [y/N] " ans
 if [[ "$ans" =~ ^[Yy]$ ]]; then
@@ -221,16 +287,18 @@ echo -e "  ${GREEN}セットアップ完了！${NC}"
 echo "══════════════════════════════════════════════"
 echo ""
 echo "  コンテナ状態:"
-sudo docker ps --format "    {{.Names}}\t{{.Status}}" --filter "name=ollama" --filter "name=open-webui"
+sudo docker ps --format "    {{.Names}}\t{{.Status}}\t{{.Image}}" \
+  --filter "name=ollama" --filter "name=open-webui"
 echo ""
-echo "  すぐ試す:"
-echo "    ollama run $STARTER_MODEL 'こんにちは'"
+echo "  すぐ試す (API経由):"
 echo "    curl http://localhost:11434/api/tags"
+echo "    curl -X POST http://localhost:11434/api/generate \\"
+echo "      -d '{\"model\": \"$STARTER_MODEL\", \"prompt\": \"こんにちは\", \"stream\": false}'"
 echo ""
 echo "  管理コマンド:"
-echo "    docker logs -f ollama        # ログ確認"
-echo "    docker stop ollama           # 停止"
-echo "    docker start ollama          # 起動"
+echo "    sudo docker logs -f ollama    # ログ確認"
+echo "    sudo docker stop ollama       # 停止"
+echo "    sudo docker start ollama      # 起動"
 echo ""
 echo "  TUI メニュー:"
 echo "    bash menu.sh"

@@ -69,14 +69,16 @@ _bench_quick() {
   while IFS= read -r model; do
     echo "$progress" # for gauge
 
-    local start end elapsed_ms token_count tps
-    start=$(date +%s%N)
-    response=$(ollama run "$model" "$prompt" 2>/dev/null || echo "ERROR")
-    end=$(date +%s%N)
+    local elapsed_ms token_count tps
+    local api_result
+    api_result=$(curl -s -X POST http://localhost:11434/api/generate \
+      -H "Content-Type: application/json" \
+      -d "$(python3 -c "import json; print(json.dumps({'model': '$model', 'prompt': '$prompt', 'stream': False}))")" \
+      2>/dev/null || echo '{}')
 
-    elapsed_ms=$(( (end - start) / 1000000 ))
-    token_count=$(echo "$response" | wc -w)
-    tps=$(echo "scale=1; $token_count * 1000 / $elapsed_ms" | bc 2>/dev/null || echo "N/A")
+    token_count=$(echo "$api_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('eval_count',0))" 2>/dev/null || echo 0)
+    elapsed_ms=$(echo "$api_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(int(d.get('eval_duration',0)/1e6))" 2>/dev/null || echo 1)
+    tps=$(echo "scale=1; $token_count * 1000 / ($elapsed_ms + 1)" | bc 2>/dev/null || echo "N/A")
 
     echo "| $model | $tps | $elapsed_ms | $token_count |" >> "$result_file"
 
@@ -141,14 +143,16 @@ _bench_single() {
   for i in $(seq 1 "$n_runs"); do
     ui_info "計測中... ($i/$n_runs)\n\nモデル: $target"
 
-    local start end elapsed_ms token_count tps
-    start=$(date +%s%N)
-    response=$(ollama run "$target" "$prompt" 2>/dev/null || echo "ERROR")
-    end=$(date +%s%N)
+    local elapsed_ms token_count tps
+    local api_result
+    api_result=$(curl -s -X POST http://localhost:11434/api/generate \
+      -H "Content-Type: application/json" \
+      -d "$(python3 -c "import json; print(json.dumps({'model': '$target', 'prompt': '$prompt', 'stream': False}))")" \
+      2>/dev/null || echo '{}')
 
-    elapsed_ms=$(( (end - start) / 1000000 ))
-    token_count=$(echo "$response" | wc -w)
-    tps=$(echo "scale=1; $token_count * 1000 / $elapsed_ms" | bc 2>/dev/null || echo "0")
+    token_count=$(echo "$api_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('eval_count',0))" 2>/dev/null || echo 0)
+    elapsed_ms=$(echo "$api_result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(int(d.get('eval_duration',0)/1e6))" 2>/dev/null || echo 1)
+    tps=$(echo "scale=1; $token_count * 1000 / ($elapsed_ms + 1)" | bc 2>/dev/null || echo "0")
 
     echo "| $i | $tps | $elapsed_ms | $token_count |" >> "$result_file"
     total_tps=$(echo "scale=1; $total_tps + $tps" | bc 2>/dev/null || echo "$total_tps")

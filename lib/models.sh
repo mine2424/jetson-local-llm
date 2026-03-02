@@ -21,8 +21,8 @@ menu_models() {
   while true; do
     # Ollama 起動確認
     if ! check_ollama; then
-      if ui_confirm "⚠️ Ollamaが起動していません。\n起動しますか？"; then
-        _start_ollama_bg
+      if ui_confirm "⚠️ Ollamaが起動していません。\nDockerコンテナを起動しますか？"; then
+        _start_ollama_docker
       else
         return
       fi
@@ -53,16 +53,44 @@ menu_models() {
   done
 }
 
-_start_ollama_bg() {
-  ui_info "Ollamaを起動中..."
-  OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KEEP_ALIVE=5m OLLAMA_NUM_CTX=2048 \
-    ollama serve > /tmp/ollama.log 2>&1 &
+# Ollama Docker コンテナを起動
+_start_ollama_docker() {
+  ui_info "Ollama (Docker) を起動中...\nページキャッシュを解放してGPUメモリを確保します"
+  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+  sudo docker start ollama > /dev/null 2>&1 || true
   sleep 3
   if check_ollama; then
     ui_success "Ollama が起動しました"
   else
-    ui_error "起動に失敗しました\nログ: /tmp/ollama.log"
+    ui_error "起動に失敗しました\nログ: sudo docker logs ollama"
   fi
+}
+
+# API 経由でモデルをpull (NDJSON ストリーム → 最終ステータス確認)
+_api_pull() {
+  local model="$1"
+  local logfile="$2"
+  local last_status
+  last_status=$(curl -s -X POST http://localhost:11434/api/pull \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"$model\"}" \
+    2>&1 | tee "$logfile" | python3 -c "
+import sys, json
+last = ''
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        last = d.get('status', '')
+        if 'error' in d:
+            last = 'error: ' + d['error']
+    except:
+        pass
+print(last)
+" 2>/dev/null || echo "error")
+  [ "$last_status" = "success" ]
 }
 
 _model_list() {
@@ -74,21 +102,27 @@ _model_list() {
     return
   fi
 
-  # メモリ情報も付加
   local report="インストール済みモデル:\n\n"
   local disk_usage
   disk_usage=$(du -sh ~/.ollama/models 2>/dev/null | cut -f1)
   report+="合計ディスク使用量: ${disk_usage:-不明}\n\n"
 
   while IFS= read -r model; do
-    local size
-    size=$(ollama show "$model" 2>/dev/null | grep "parameter size" | awk '{print $NF}' || echo "?")
     report+="  • $model\n"
   done <<< "$models"
 
-  # 実行中モデルも表示
+  # 実行中モデル (API /api/ps)
   local running
-  running=$(ollama ps 2>/dev/null | tail -n +2)
+  running=$(curl -s http://localhost:11434/api/ps 2>/dev/null | \
+    python3 -c "
+import sys, json
+try:
+    for m in json.load(sys.stdin).get('models', []):
+        size_mb = m.get('size_vram', 0) // 1048576
+        print(f\"  {m['name']}  ({size_mb}MB VRAM)\")
+except:
+    pass
+" 2>/dev/null || true)
   if [ -n "$running" ]; then
     report+="\n▶️  実行中:\n$running"
   fi
@@ -116,16 +150,15 @@ _model_pull_select() {
     return
   fi
 
-  # 選択されたモデルをpull
   local failed=()
   for model in $selected; do
     model=$(echo "$model" | tr -d '"')
-    ui_info "pull中: $model\n\nこのウィンドウはしばらく動きません..."
-    if ollama pull "$model" > /tmp/pull_$$.log 2>&1; then
-      : # OK
-    else
+    ui_info "pull中: $model\n\nOllama API 経由でダウンロード中..."
+    local logfile="/tmp/pull_$$.log"
+    if ! _api_pull "$model" "$logfile"; then
       failed+=("$model")
     fi
+    rm -f "$logfile"
   done
 
   if [ ${#failed[@]} -eq 0 ]; then
@@ -138,15 +171,21 @@ _model_pull_select() {
 _model_pull_all() {
   ui_confirm "推奨モデルを全てダウンロードします。\n合計 10〜15GB 必要です。続けますか？" || return
 
-  local tmpfile
-  tmpfile=$(mktemp)
-  ui_info "モデルをダウンロード中...\nしばらくお待ちください（完了まで数分かかります）"
-  bash "$SCRIPT_DIR/setup/03_pull_models.sh" > "$tmpfile" 2>&1
-  whiptail --title "$TITLE - モデル pull 結果" \
-    --scrolltext \
-    --textbox "$tmpfile" $HEIGHT $WIDTH
-  rm -f "$tmpfile"
-  ui_success "推奨モデルのダウンロードが完了しました"
+  local failed=()
+  for model in "${!RECOMMENDED_MODELS[@]}"; do
+    ui_info "pull中: $model\n\nOllama API 経由でダウンロード中..."
+    local logfile="/tmp/pull_all_$$.log"
+    if ! _api_pull "$model" "$logfile"; then
+      failed+=("$model")
+    fi
+    rm -f "$logfile"
+  done
+
+  if [ ${#failed[@]} -eq 0 ]; then
+    ui_success "推奨モデルのダウンロードが完了しました\n\n$(get_models)"
+  else
+    ui_error "以下のモデルのダウンロードに失敗しました:\n${failed[*]}"
+  fi
 }
 
 _model_pull_custom() {
@@ -155,16 +194,25 @@ _model_pull_custom() {
   [ -z "$model_name" ] && return
 
   ui_info "pull中: $model_name ..."
-  if ollama pull "$model_name" > /tmp/pull_custom.log 2>&1; then
+  local logfile="/tmp/pull_custom_$$.log"
+  if _api_pull "$model_name" "$logfile"; then
+    rm -f "$logfile"
     ui_success "$model_name のダウンロードが完了しました！"
   else
+    rm -f "$logfile"
     ui_error "$model_name のダウンロードに失敗しました。\nモデル名が正しいか確認してください。"
   fi
 }
 
 _model_import_gguf() {
+  # GGUFファイルは ~/ .ollama/models/ 以下に置く必要がある
+  # (コンテナマウント: ~/.ollama/models → /data/models/ollama/models)
+  whiptail --title "$TITLE - GGUF インポート" \
+    --msgbox "GGUFファイルのインポートについて\n\n【重要】ファイルは以下のパスに置く必要があります:\n  ~/.ollama/models/ 以下\n\n理由: Ollamaコンテナはこのディレクトリのみマウントされており、\nコンテナ内パス /data/models/ollama/models/ に対応します。\n\n例: ~/.ollama/models/imports/mymodel.gguf\n    → コンテナ内: /data/models/ollama/models/imports/mymodel.gguf" \
+    $HEIGHT $WIDTH
+
   local gguf_path
-  gguf_path=$(ui_input "GGUFファイルのパスを入力" "$HOME/models/") || return
+  gguf_path=$(ui_input "GGUFファイルのパスを入力\n(~/.ollama/models/ 以下)" "$HOME/.ollama/models/") || return
   [ -z "$gguf_path" ] && return
 
   if [ ! -f "$gguf_path" ]; then
@@ -172,27 +220,55 @@ _model_import_gguf() {
     return
   fi
 
+  # パスのバリデーション: ~/.ollama/models/ 以下であること
+  local models_base="$HOME/.ollama/models"
+  if [[ "$gguf_path" != "$models_base/"* ]]; then
+    ui_error "ファイルは ~/.ollama/models/ 以下に置いてください\n\n指定されたパス:\n$gguf_path"
+    return
+  fi
+
+  # コンテナ内パスに変換
+  local relative_path="${gguf_path#$models_base/}"
+  local container_path="/data/models/ollama/models/$relative_path"
+
   local model_name
   model_name=$(ui_input "Ollamaでのモデル名を入力" "$(basename "$gguf_path" .gguf)") || return
   [ -z "$model_name" ] && return
 
-  # Modelfile 生成
-  local modelfile_path="/tmp/Modelfile_import_$$"
-  cat > "$modelfile_path" <<EOF
-FROM $gguf_path
+  # Modelfile を生成してAPIでcreate
+  local modelfile_content
+  modelfile_content="FROM $container_path
 
 PARAMETER num_ctx 8192
 PARAMETER temperature 0.7
-PARAMETER stop "<|im_end|>"
-EOF
+PARAMETER stop \"<|im_end|>\""
 
-  ui_info "$model_name をインポート中..."
-  if ollama create "$model_name" -f "$modelfile_path" > /tmp/import.log 2>&1; then
-    rm -f "$modelfile_path"
-    ui_success "インポート完了！\n\nモデル名: $model_name\n\nollama run $model_name で使えます"
+  ui_info "$model_name をインポート中...\n(大きいファイルは数分かかります)"
+
+  local response
+  response=$(python3 -c "
+import json, sys
+modelfile = '''$modelfile_content'''
+payload = json.dumps({'name': '$model_name', 'modelfile': modelfile, 'stream': False})
+print(payload)
+" | curl -s -X POST http://localhost:11434/api/create \
+    -H "Content-Type: application/json" \
+    -d @- 2>&1)
+
+  local status
+  status=$(echo "$response" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('status', 'error'))
+except:
+    print('error')
+" 2>/dev/null || echo "error")
+
+  if [ "$status" = "success" ]; then
+    ui_success "インポート完了！\n\nモデル名: $model_name\n\nAPI経由で使用可能です"
   else
-    rm -f "$modelfile_path"
-    ui_error "インポートに失敗しました。\nログ: /tmp/import.log"
+    ui_error "インポートに失敗しました。\n\nレスポンス: $response"
   fi
 }
 
@@ -204,7 +280,6 @@ _model_remove() {
     return
   fi
 
-  # モデルリストからメニューを動的生成
   local items=()
   while IFS= read -r m; do
     items+=("$m" "$m")
@@ -215,10 +290,16 @@ _model_remove() {
 
   ui_confirm "⚠️ $target を削除しますか？\n(この操作は元に戻せません)" || return
 
-  if ollama rm "$target" 2>/dev/null; then
+  local response
+  response=$(curl -s -X DELETE http://localhost:11434/api/delete \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"$target\"}" 2>&1)
+
+  # 削除成功は HTTP 200 で空レスポンス
+  if [ -z "$response" ] || echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(1 if 'error' in d else 0)" 2>/dev/null; then
     ui_success "$target を削除しました"
   else
-    ui_error "$target の削除に失敗しました"
+    ui_error "$target の削除に失敗しました\n\n$response"
   fi
 }
 
@@ -243,9 +324,23 @@ _model_test() {
   [ -z "$prompt" ] && return
 
   ui_info "$target で推論中...\n(10〜30秒かかります)"
-  local result
   cuda_memfree
-  result=$(ollama run "$target" "$prompt" 2>&1)
+
+  local result
+  result=$(curl -s -X POST http://localhost:11434/api/generate \
+    -H "Content-Type: application/json" \
+    -d "$(python3 -c "import json; print(json.dumps({'model': '$target', 'prompt': '$prompt', 'stream': False}))")" \
+    2>&1 | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    if 'error' in d:
+        print('エラー: ' + d['error'])
+    else:
+        print(d.get('response', '(応答なし)'))
+except Exception as e:
+    print(f'パースエラー: {e}')
+" 2>&1)
 
   whiptail --title "$TITLE - $target の応答" \
     --scrolltext \

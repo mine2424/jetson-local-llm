@@ -5,33 +5,53 @@ OllamaはOpenAI互換のREST APIを提供する。既存のOpenAIクライアン
 ## エンドポイント
 
 ```
-http://<jetson-ip>:11434
+http://localhost:11434
 ```
 
 | エンドポイント | 説明 |
 |---------------|------|
 | `GET  /api/tags` | インストール済みモデル一覧 |
+| `GET  /api/ps` | ロード中のモデル一覧 |
+| `POST /api/pull` | モデルのダウンロード |
+| `DELETE /api/delete` | モデルの削除 |
 | `POST /api/generate` | テキスト生成（Ollamaネイティブ） |
+| `POST /api/create` | GGUFからモデルをインポート |
 | `POST /v1/chat/completions` | OpenAI互換チャット |
 | `POST /v1/completions` | OpenAI互換補完 |
 | `GET  /v1/models` | OpenAI互換モデル一覧 |
 
 ## 外部からアクセスする設定
 
-デフォルトは `127.0.0.1` のみ。同一LAN内の他マシンからアクセスする場合：
+デフォルトは `127.0.0.1` のみ。同一LAN内の他マシンからアクセスする場合、
+コンテナの `-p` フラグを変更して作り直す:
 
 ```bash
-# /etc/systemd/system/ollama.service.d/jetson.conf を編集
-Environment="OLLAMA_HOST=0.0.0.0:11434"
+sudo docker stop ollama && sudo docker rm ollama
+IMAGE=$(autotag ollama)
 
-sudo systemctl daemon-reload && sudo systemctl restart ollama
+sudo docker run -d \
+  --name ollama \
+  --runtime nvidia \
+  -e OLLAMA_HOST=0.0.0.0:11434 \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e OLLAMA_FLASH_ATTENTION=1 \
+  -e OLLAMA_MAX_LOADED_MODELS=1 \
+  -e OLLAMA_KEEP_ALIVE=5m \
+  -e OLLAMA_NUM_CTX=2048 \
+  -v "$HOME/.ollama/models:/data/models/ollama/models" \
+  -p 11434:11434 \   # 0.0.0.0 でバインド
+  --restart unless-stopped \
+  "$IMAGE" \
+  /bin/sh -c '/start_ollama; tail -f /data/logs/ollama.log'
 ```
+
+別マシンからは `http://<jetson-ip>:11434` でアクセスできる。
 
 ## curl での動作確認
 
 ```bash
 # モデル一覧
-curl http://localhost:11434/api/tags | jq '.models[].name'
+curl http://localhost:11434/api/tags | python3 -m json.tool
 
 # チャット（OpenAI互換）
 curl http://localhost:11434/v1/chat/completions \
@@ -41,7 +61,16 @@ curl http://localhost:11434/v1/chat/completions \
     "messages": [
       {"role": "user", "content": "日本語で自己紹介してください"}
     ]
-  }' | jq '.choices[0].message.content'
+  }' | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+
+# ネイティブ生成API
+curl -s -X POST http://localhost:11434/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen2.5:7b",
+    "prompt": "日本語で自己紹介してください",
+    "stream": false
+  }' | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
 ```
 
 ## Python (openai ライブラリ)
@@ -95,18 +124,24 @@ for chunk in client.chat.completions.create(
     print(chunk.choices[0].delta.content or "", end="", flush=True)
 ```
 
-## よく使うOllamaコマンド
+## モデル管理 (API)
 
 ```bash
-# 実行中モデル確認
-ollama ps
+# モデルをダウンロード
+curl -X POST http://localhost:11434/api/pull \
+  -d '{"name": "qwen2.5:3b"}'
 
-# モデルをアンロード（メモリ解放）
-ollama stop qwen2.5:7b
+# ロード中モデルを確認
+curl -s http://localhost:11434/api/ps | python3 -m json.tool
 
-# モデル削除
-ollama rm model-name
+# モデルをアンロード (keep_alive=0)
+curl -s -X POST http://localhost:11434/api/generate \
+  -d '{"model": "qwen2.5:7b", "keep_alive": 0}'
+
+# モデルを削除
+curl -X DELETE http://localhost:11434/api/delete \
+  -d '{"name": "model-name"}'
 
 # ログ確認
-journalctl -u ollama -f
+sudo docker logs -f ollama
 ```
