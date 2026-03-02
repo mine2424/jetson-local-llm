@@ -16,6 +16,8 @@ menu_setup() {
       "5" "⚡ 電力モード設定 (7W / 15W / 25W)" \
       "6" "📦 Ollama インストール / 更新 (ネイティブ・旧)" \
       "7" "🔨 llama.cpp ビルド (CUDA対応)" \
+      "8" "💾 メモリ最適化 (SSD スワップ / ZRAM 無効化 / GUI)" \
+      "9" "🧩 jetson-containers セットアップ (autotag Ollama)" \
       "B" "← 戻る"
     ) || return
 
@@ -28,6 +30,8 @@ menu_setup() {
       5) _setup_power ;;
       6) _setup_ollama ;;
       7) _setup_llamacpp ;;
+      8) _setup_memory_opt ;;
+      9) _setup_jetson_containers ;;
       B) return ;;
     esac
   done
@@ -105,6 +109,18 @@ _setup_llamacpp() {
   else
     ui_error "ビルドに失敗しました。\nログ: /tmp/llamacpp_build.log"
   fi
+}
+
+_setup_memory_opt() {
+  clear
+  bash "$SCRIPT_DIR/setup/07_setup_memory_opt.sh"
+  press_any_key
+}
+
+_setup_jetson_containers() {
+  clear
+  bash "$SCRIPT_DIR/setup/08_setup_jetson_containers.sh"
+  press_any_key
 }
 
 _setup_webui() {
