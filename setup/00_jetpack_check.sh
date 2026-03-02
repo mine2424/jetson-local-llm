@@ -18,8 +18,10 @@ echo ""
 echo "[CUDA]"
 if command -v nvcc &>/dev/null; then
   nvcc --version | grep release
+elif [ -x /usr/local/cuda/bin/nvcc ]; then
+  /usr/local/cuda/bin/nvcc --version | grep release
 else
-  echo "⚠️  nvcc not found. JetPack installed correctly?"
+  echo "⚠️  nvcc not found"
 fi
 echo ""
 
