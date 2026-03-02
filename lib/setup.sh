@@ -11,10 +11,11 @@ menu_setup() {
       "0" "🚀 ワンショットセットアップ (install.sh)" \
       "1" "🔍 環境チェック (JetPack / CUDA / メモリ)" \
       "2" "🐳 Docker Ollama セットアップ" \
-      "3" "🌐 Open WebUI セットアップ (Docker)" \
-      "4" "⚡ 電力モード設定 (7W / 15W / 25W)" \
-      "5" "📦 Ollama インストール / 更新 (ネイティブ・旧)" \
-      "6" "🔨 llama.cpp ビルド (CUDA対応)" \
+      "3" "🧠 LFM-2.5 セットアップ (SSM省メモリモデル)" \
+      "4" "🌐 Open WebUI セットアップ (Docker)" \
+      "5" "⚡ 電力モード設定 (7W / 15W / 25W)" \
+      "6" "📦 Ollama インストール / 更新 (ネイティブ・旧)" \
+      "7" "🔨 llama.cpp ビルド (CUDA対応)" \
       "B" "← 戻る"
     ) || return
 
@@ -22,10 +23,11 @@ menu_setup() {
       0) _setup_install ;;
       1) _setup_check ;;
       2) _setup_docker_ollama ;;
-      3) _setup_webui ;;
-      4) _setup_power ;;
-      5) _setup_ollama ;;
-      6) _setup_llamacpp ;;
+      3) _setup_lfm ;;
+      4) _setup_webui ;;
+      5) _setup_power ;;
+      6) _setup_ollama ;;
+      7) _setup_llamacpp ;;
       B) return ;;
     esac
   done
@@ -127,6 +129,16 @@ _setup_webui() {
   else
     ui_error "起動に失敗しました。\nログ: /tmp/webui.log"
   fi
+}
+
+_setup_lfm() {
+  if ! check_ollama; then
+    ui_error "Ollama API が応答しません\nまず Ollama を起動してください\n(Service → Ollama 起動)"
+    return
+  fi
+  clear
+  bash "$SCRIPT_DIR/setup/06_setup_lfm.sh"
+  press_any_key
 }
 
 _setup_power() {

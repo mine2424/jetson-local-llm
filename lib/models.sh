@@ -7,14 +7,14 @@ source "$SCRIPT_DIR/lib/ui.sh"
 # 推奨モデル定義
 declare -A RECOMMENDED_MODELS
 RECOMMENDED_MODELS=(
-  ["qwen2.5:7b"]="Qwen2.5 7B | 日本語最強クラス | ~4.5GB"
-  ["qwen2.5:3b"]="Qwen2.5 3B | 軽量日本語 | ~2.0GB"
-  ["lfm2.5:3b"]="LFM-2.5 3B | SSMアーキテクチャ・省メモリ | ~2.0GB"
-  ["lfm2.5:1b"]="LFM-2.5 1B | 超軽量・高速 | ~0.8GB"
-  ["phi3.5:mini"]="Phi-3.5 Mini | コード生成 | ~2.4GB"
-  ["llama3.2:3b"]="Llama 3.2 3B | 英語汎用 | ~2.2GB"
-  ["gemma2:2b"]="Gemma 2 2B | 超軽量バックアップ | ~1.8GB"
-  ["mistral:7b"]="Mistral 7B | 汎用・品質高 | ~4.1GB"
+  ["qwen2.5:7b"]="Qwen2.5 7B     | 日本語最強クラス | ~4.5GB"
+  ["qwen2.5:3b"]="Qwen2.5 3B     | 軽量日本語       | ~2.0GB"
+  ["lfm2.5-thinking"]="LFM-2.5 Thinking 1.2B | SSM推論特化・Ollama公式 | ~0.7GB"
+  ["hadad/LFM2.5-1.2B:Q4_K_M"]="LFM-2.5 1.2B Instruct | SSM軽量汎用 | ~0.7GB"
+  ["phi3.5:mini"]="Phi-3.5 Mini   | コード生成       | ~2.4GB"
+  ["llama3.2:3b"]="Llama 3.2 3B   | 英語汎用         | ~2.2GB"
+  ["gemma2:2b"]="Gemma 2 2B     | 超軽量バックアップ | ~1.8GB"
+  ["mistral:7b"]="Mistral 7B     | 汎用・品質高     | ~4.1GB"
 )
 
 menu_models() {
