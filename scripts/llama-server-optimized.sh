@@ -79,6 +79,8 @@ echo "      -d '{\"model\":\"lfm2.5\",\"messages\":[{\"role\":\"user\",\"content
 echo ""
 
 # 環境変数でCUDA最適化
+# FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
+export GGML_CUDA_FORCE_MMQ=1
 export GGML_CUDA_NO_PEER_COPY=1
 export CUDA_VISIBLE_DEVICES=0
 

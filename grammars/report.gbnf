@@ -1,0 +1,46 @@
+# grammars/report.gbnf
+# M3: 構造化レポート出力の JSON スキーマ強制
+#
+# 使い方 (llama-server):
+#   --grammar-file grammars/report.gbnf
+#
+# 出力例:
+# {
+#   "title": "探索テストレポート",
+#   "date": "2026-03-03",
+#   "summary": "...",
+#   "findings": [
+#     {"id": 1, "severity": "high", "description": "...", "steps": ["...", "..."]}
+#   ],
+#   "recommendations": ["...", "..."]
+# }
+
+root   ::= "{" ws
+  "\"title\":"         ws string "," ws
+  "\"date\":"          ws string "," ws
+  "\"summary\":"       ws string "," ws
+  "\"findings\":"      ws findings "," ws
+  "\"recommendations\":" ws str-array
+  ws "}"
+
+findings ::= "[" ws (finding ("," ws finding)*)? ws "]"
+
+finding ::= "{" ws
+  "\"id\":"          ws integer "," ws
+  "\"severity\":"    ws severity "," ws
+  "\"description\":" ws string "," ws
+  "\"steps\":"       ws str-array
+  ws "}"
+
+severity ::= "\"high\"" | "\"medium\"" | "\"low\""
+
+str-array ::= "[" ws (string ("," ws string)*)? ws "]"
+
+string ::= "\"" (
+  [^"\\] |
+  "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])
+)* "\""
+
+integer ::= "-"? ("0" | [1-9] [0-9]*)
+
+ws ::= ([ \t\n\r])*

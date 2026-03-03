@@ -420,6 +420,8 @@ _llamacpp_server_start() {
   _apply_perf_mode
 
   # CUDA最適化環境変数
+  # FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
+  export GGML_CUDA_FORCE_MMQ=1
   export GGML_CUDA_NO_PEER_COPY=1
   export CUDA_VISIBLE_DEVICES=0
 
