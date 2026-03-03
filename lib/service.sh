@@ -4,33 +4,51 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/ui.sh"
 
+LLAMACPP_SERVER_PORT=8081
+LLAMACPP_BIN="$HOME/llama.cpp/build/bin"
+GGUF_DIR="$HOME/.ollama/models/lfm25_gguf"
+
 menu_service() {
   while true; do
+    # llama-server 状態をヘッダに反映
+    local lls_status="⏹️ 停止"
+    if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+      lls_status="✅ 稼働中"
+    fi
+
     local choice
-    choice=$(ui_menu "🚀 サービス管理" \
-      "1" "📊 ステータス確認 (Ollama / tegrastats)" \
-      "2" "▶️  Ollama 起動 (drop_caches → docker start)" \
-      "3" "⏹️  Ollama 停止" \
-      "4" "🔄 Ollama 再起動" \
-      "5" "📜 Ollamaログ表示" \
-      "6" "💬 ollama run (インタラクティブチャット)" \
-      "7" "📡 API 疎通テスト" \
-      "8" "🐳 コンテナイメージ更新 (autotag → 再作成)" \
-      "9" "⚡ Jetson リソースモニタ (tegrastats)" \
-      "B" "← 戻る"
+    choice=$(ui_menu "🚀 サービス管理  [LFM-2.5 llama-server: $lls_status]" \
+      "1"  "📊 ステータス確認 (全サービス)" \
+      "2"  "▶️  Ollama 起動 (drop_caches → docker start)" \
+      "3"  "⏹️  Ollama 停止" \
+      "4"  "🔄 Ollama 再起動" \
+      "5"  "📜 Ollamaログ表示" \
+      "6"  "💬 ollama run (インタラクティブチャット)" \
+      "7"  "📡 API 疎通テスト (Ollama)" \
+      "8"  "🐳 コンテナイメージ更新 (autotag → 再作成)" \
+      "9"  "⚡ Jetson リソースモニタ (tegrastats)" \
+      "L1" "▶️  LFM-2.5 llama-server 起動 (port $LLAMACPP_SERVER_PORT)" \
+      "L2" "⏹️  LFM-2.5 llama-server 停止" \
+      "L3" "📡 LFM-2.5 API 疎通テスト" \
+      "L4" "📜 llama-server ログ表示" \
+      "B"  "← 戻る"
     ) || return
 
     case "$choice" in
-      1) _service_status ;;
-      2) _ollama_start ;;
-      3) _ollama_stop ;;
-      4) _ollama_restart ;;
-      5) _ollama_logs ;;
-      6) _ollama_run_interactive ;;
-      7) _api_test ;;
-      8) _container_update ;;
-      9) _tegrastats_monitor ;;
-      B) return ;;
+      1)  _service_status ;;
+      2)  _ollama_start ;;
+      3)  _ollama_stop ;;
+      4)  _ollama_restart ;;
+      5)  _ollama_logs ;;
+      6)  _ollama_run_interactive ;;
+      7)  _api_test ;;
+      8)  _container_update ;;
+      9)  _tegrastats_monitor ;;
+      L1) _llamacpp_server_start ;;
+      L2) _llamacpp_server_stop ;;
+      L3) _llamacpp_api_test ;;
+      L4) _llamacpp_logs ;;
+      B)  return ;;
     esac
   done
 }
@@ -55,6 +73,22 @@ _service_status() {
       report+="[Ollama Docker]  ⏹️ 停止 (コンテナ存在)\n"
     else
       report+="[Ollama Docker]  ℹ️ コンテナなし\n"
+    fi
+  fi
+
+  # LFM-2.5 llama-server
+  if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+    local pid
+    pid=$(cat /tmp/llama-server.pid 2>/dev/null || echo "?")
+    local model_file
+    model_file=$(ls "$GGUF_DIR"/*.gguf 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "不明")
+    report+="[LFM-2.5 Server] ✅ 稼働中 (port $LLAMACPP_SERVER_PORT, PID: $pid)\n"
+    report+="[モデル]         $model_file\n"
+  else
+    if [ -f "$LLAMACPP_BIN/llama-server" ]; then
+      report+="[LFM-2.5 Server] ⏹️ 停止 (llama.cpp ビルド済み)\n"
+    else
+      report+="[LFM-2.5 Server] ℹ️ 未セットアップ (Setup → LFM-2.5)\n"
     fi
   fi
 
@@ -333,4 +367,138 @@ _tegrastats_monitor() {
   echo "--- tegrastats (Ctrl+C で停止) ---"
   tegrastats --interval 1000
   press_any_key
+}
+
+# ═══════════════════════════════════════════════════════════
+# LFM-2.5 llama-server 管理
+# ═══════════════════════════════════════════════════════════
+
+_llamacpp_server_start() {
+  if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+    ui_msg "llama-server" "既に port $LLAMACPP_SERVER_PORT で稼働しています"
+    return
+  fi
+
+  if [ ! -f "$LLAMACPP_BIN/llama-server" ]; then
+    ui_error "llama.cpp がビルドされていません\n\nSetup → LFM-2.5 セットアップ を実行してください"
+    return
+  fi
+
+  # GGUFファイルを選択
+  local gguf_files
+  gguf_files=$(ls "$GGUF_DIR"/*.gguf 2>/dev/null)
+  if [ -z "$gguf_files" ]; then
+    ui_error "GGUFファイルが見つかりません: $GGUF_DIR\n\nSetup → LFM-2.5 セットアップ を実行してください"
+    return
+  fi
+
+  local items=()
+  while IFS= read -r f; do
+    items+=("$f" "$(basename "$f")")
+  done <<< "$gguf_files"
+
+  local target
+  target=$(ui_menu "起動するモデル (GGUF) を選択" "${items[@]}") || return
+
+  ui_info "llama-server を起動中...\nGPU layer: -ngl 99\nport: $LLAMACPP_SERVER_PORT"
+
+  # 既存プロセスを停止
+  pkill -f "llama-server.*$LLAMACPP_SERVER_PORT" 2>/dev/null || true
+  sleep 1
+
+  # NvMap キャッシュ解放
+  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+
+  nohup "$LLAMACPP_BIN/llama-server" \
+    -m "$target" \
+    -ngl 99 \
+    -c 4096 \
+    --host 0.0.0.0 \
+    --port "$LLAMACPP_SERVER_PORT" \
+    --log-disable \
+    > /tmp/llama-server.log 2>&1 &
+  echo $! > /tmp/llama-server.pid
+
+  # 起動待機
+  local i=0
+  while [ $i -lt 20 ]; do
+    if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+      ui_success "llama-server 起動完了！\n\nAPI: http://localhost:$LLAMACPP_SERVER_PORT\nモデル: $(basename "$target")\n\nOpenAI互換エンドポイント:\n  http://localhost:$LLAMACPP_SERVER_PORT/v1/chat/completions"
+      return
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  ui_error "起動に失敗しました\nログ: /tmp/llama-server.log"
+}
+
+_llamacpp_server_stop() {
+  if ! curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+    ui_msg "llama-server" "稼働していません"
+    return
+  fi
+
+  ui_confirm "llama-server を停止しますか？" || return
+
+  local pid
+  pid=$(cat /tmp/llama-server.pid 2>/dev/null)
+  if [ -n "$pid" ]; then
+    kill "$pid" 2>/dev/null || true
+  fi
+  pkill -f "llama-server.*$LLAMACPP_SERVER_PORT" 2>/dev/null || true
+
+  sleep 1
+  if ! curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+    ui_success "llama-server を停止しました"
+  else
+    ui_error "停止に失敗しました"
+  fi
+}
+
+_llamacpp_api_test() {
+  if ! curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+    ui_error "llama-server が起動していません\n(L1) LFM-2.5 llama-server 起動 を実行してください"
+    return
+  fi
+
+  local prompt
+  prompt=$(ui_input "テストプロンプト" "日本語で自己紹介してください。") || return
+  [ -z "$prompt" ] && return
+
+  ui_info "LFM-2.5 で推論中...\n(10〜30秒かかります)"
+
+  local result
+  result=$(curl -s "http://localhost:$LLAMACPP_SERVER_PORT/v1/chat/completions" \
+    -H "Content-Type: application/json" \
+    -d "$(python3 -c "import json; print(json.dumps({
+      'model': 'lfm2.5',
+      'messages': [{'role': 'user', 'content': '$prompt'}]
+    }))")" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d['choices'][0]['message']['content'])
+except Exception as e:
+    print(f'パースエラー: {e}')
+" 2>&1)
+
+  whiptail --title "$TITLE - LFM-2.5 応答 (port $LLAMACPP_SERVER_PORT)" \
+    --scrolltext \
+    --msgbox "$result" $HEIGHT $WIDTH
+}
+
+_llamacpp_logs() {
+  local logfile="/tmp/llama-server.log"
+  if [ ! -f "$logfile" ]; then
+    ui_msg "llama-server ログ" "ログファイルが見つかりません: $logfile\nまず llama-server を起動してください"
+    return
+  fi
+
+  local tmpfile
+  tmpfile=$(mktemp)
+  tail -50 "$logfile" > "$tmpfile"
+  whiptail --title "$TITLE - llama-server ログ (最新50行)" \
+    --scrolltext \
+    --textbox "$tmpfile" $HEIGHT $WIDTH
+  rm -f "$tmpfile"
 }

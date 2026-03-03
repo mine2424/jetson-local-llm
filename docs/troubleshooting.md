@@ -175,3 +175,62 @@ sysctl vm.min_free_kbytes
 # 設定ファイル確認
 cat /etc/sysctl.d/99-ollama-jetson.conf
 ```
+
+---
+
+## LFM-2.5 / llama-server (port 8081)
+
+### ❌ llama-server が起動しない / すぐ落ちる
+
+```bash
+# ログ確認
+cat /tmp/llama-server.log
+
+# NvMap メモリ不足の場合
+sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'
+grep MemFree /proc/meminfo  # 3GB 以上あれば OK
+
+# GPU layer を減らして再試行
+~/llama.cpp/build/bin/llama-server \
+  -m ~/.ollama/models/lfm25_gguf/LFM2.5-1.2B-JP-Q4_K_M.gguf \
+  -ngl 20 \   # 99 → 20 に下げる
+  -c 4096 --host 0.0.0.0 --port 8081
+```
+
+### ❌ llama.cpp ビルドが失敗する
+
+```bash
+# CUDA 確認
+nvcc --version
+
+# cmake 再実行 (CUDAなしでフォールバック)
+cd ~/llama.cpp
+cmake -B build -DGGML_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j $(nproc)
+```
+
+### ❌ `-hf` フラグで HuggingFace からダウンロードできない
+
+```bash
+# llama-cli が curl サポート付きでビルドされているか確認
+ldd ~/llama.cpp/build/bin/llama-cli | grep curl
+
+# なければ libcurl 入れて再ビルド
+sudo apt install -y libcurl4-openssl-dev
+cd ~/llama.cpp
+cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=ON ...
+```
+
+### ✅ 動作確認チェックリスト
+
+```bash
+# 1. プロセス確認
+ps aux | grep llama-server
+
+# 2. ポート確認
+ss -tlnp | grep 8081
+
+# 3. ヘルスチェック
+curl http://localhost:8081/health
+# → {"status":"ok"} が出ればOK
+```

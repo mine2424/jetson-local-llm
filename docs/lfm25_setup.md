@@ -5,116 +5,127 @@
 Liquid AI が開発した **Liquid Foundation Model 2.5**。
 Transformerではなく **SSM（State Space Model）+ Attention ハイブリッド** アーキテクチャ。
 
-### Jetson向けメリット
+### 特徴
 - メモリ効率が高い（Transformerより省RAM）
-- **125K コンテキスト** 対応（Transformerの場合同サイズでは不可能なレベル）
+- **125K コンテキスト** 対応
 - 731MB (Q4_K_M) で動作する超軽量モデル
+- **day-0 で llama.cpp / GGUF 公式サポート** ← Jetson向けに重要
 
 ---
 
-## Ollama上のLFM-2.5（最新調査: 2025年3月）
+## Jetson Orin Nano での対応方針
 
-| モデル | Ollama タグ | サイズ | 説明 |
-|-------|-----------|-------|------|
-| LFM-2.5 Thinking | `lfm2.5-thinking:1.2b-q4_K_M` | 731MB | **公式・推奨** |
-| LFM-2.5 Thinking Q8 | `lfm2.5-thinking:1.2b-q8_0` | 1.2GB | 高品質版 |
-| LFM-2.5 日本語 | `nn-tsuzu/LFM2.5-1.2B-JP` | ~0.7GB | 日本語fine-tune |
-| LFM-2.5 Instruct | `nn-tsuzu/lfm2.5-1.2b-instruct` | ~0.7GB | コミュニティ版 |
+Ollama の `dustynv/ollama` コンテナは Ollama バージョンが古く、
+LFM-2.5 は llama.cpp の比較的新しいアーキテクチャ (`lfm2` アーキ) のため
+**そのままでは動かない可能性が高い。**
 
-> ⚠️ **重要**: dustynv/ollama コンテナの Ollama バージョンが古いため、
-> そのままでは `lfm2.5-thinking` pull が **412/500 エラー** で失敗する。
-> `setup/06_setup_lfm.sh` がバイナリを自動でアップグレードしてから pull する。
-
----
-
-## セットアップ方法
-
-### 方法1: TUI メニューから（推奨）
+### セットアップフロー（自動）
 
 ```
-./menu.sh → 1. Setup → 3. LFM-2.5 セットアップ
-```
-
-### 方法2: スクリプトを直接実行
-
-```bash
 bash setup/06_setup_lfm.sh
 ```
 
-スクリプトの処理フロー:
 ```
-[1] コンテナ内 Ollama バイナリを最新版にアップグレード
-[2] lfm2.5-thinking:1.2b-q4_K_M を API pull
-    ↓ 成功 → 完了
-    ↓ 失敗 (互換性問題)
-[3] HuggingFace から GGUF をダウンロード
-    → Ollama API /api/create でインポート (lfm2.5-local)
-```
-
-### 方法3: 日本語モデルを手動で追加
-
-```bash
-# LFM-2.5 日本語 fine-tune (nn-tsuzu/LFM2.5-1.2B-JP)
-curl -s -X POST http://localhost:11434/api/pull \
-  -H "Content-Type: application/json" \
-  -d '{"name": "nn-tsuzu/LFM2.5-1.2B-JP"}' | \
-  python3 -c "
-import sys, json
-for line in sys.stdin:
-    try:
-        d = json.loads(line)
-        if d.get('status'): print(d['status'])
-    except: pass
-"
+[1] Ollama バイナリをコンテナ内でアップグレード
+[2] Ollama API pull: lfm2.5-thinking:1.2b-q4_K_M
+    → 成功: Ollama (port 11434) で提供 ← 理想
+    → 失敗:
+[3] llama.cpp fallback (推奨)
+    a. setup/05_setup_llamacpp.sh でビルド (初回のみ 10〜20分)
+    b. HuggingFace GGUF を直接ダウンロード
+       - Instruct: LiquidAI/LFM2.5-1.2B-Instruct-GGUF
+       - 日本語:   LiquidAI/LFM2.5-1.2B-JP-GGUF  ← 推奨
+    c. llama-server を port 8081 で起動 (OpenAI互換)
 ```
 
 ---
 
-## 動作確認 (API経由)
+## Ollama上のLFM-2.5（参考情報）
+
+| モデル | Ollama タグ | サイズ | 備考 |
+|-------|-----------|-------|------|
+| LFM-2.5 Thinking | `lfm2.5-thinking:1.2b-q4_K_M` | 731MB | バイナリUG後にpull |
+| LFM-2.5 日本語 | `nn-tsuzu/LFM2.5-1.2B-JP` | ~0.7GB | バイナリUG後にpull |
+
+---
+
+## llama.cpp での利用（確実な方法）
+
+### llama.cpp ビルド
 
 ```bash
-# LFM-2.5 Thinking (公式)
-curl -s -X POST http://localhost:11434/api/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "lfm2.5-thinking:1.2b-q4_K_M",
-    "prompt": "こんにちは。自己紹介してください。",
-    "stream": false
-  }' | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
+bash setup/05_setup_llamacpp.sh
+# CUDA (sm_87) 対応ビルド / 初回 10〜20 分
+```
 
-# LFM-2.5 日本語
-curl -s -X POST http://localhost:11434/api/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "nn-tsuzu/LFM2.5-1.2B-JP",
-    "prompt": "機械学習とは何ですか？",
-    "stream": false
-  }' | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
+### CUI チャット
 
-# インタラクティブチャット
-./ollama-run.sh lfm2.5-thinking:1.2b-q4_K_M
+```bash
+# インタラクティブチャット (-hf でHuggingFaceから自動DL)
+~/llama.cpp/build/bin/llama-cli \
+  -hf LiquidAI/LFM2.5-1.2B-JP-GGUF \
+  -ngl 99 -c 4096
+
+# 手動でダウンロード済みの場合
+~/llama.cpp/build/bin/llama-cli \
+  -m ~/.ollama/models/lfm25_gguf/LFM2.5-1.2B-JP-Q4_K_M.gguf \
+  -ngl 99 -c 4096 -i
+```
+
+### OpenAI互換 APIサーバ (port 8081)
+
+```bash
+# TUIから: Service → L1. LFM-2.5 llama-server 起動
+# または手動:
+~/llama.cpp/build/bin/llama-server \
+  -m ~/.ollama/models/lfm25_gguf/LFM2.5-1.2B-JP-Q4_K_M.gguf \
+  -ngl 99 -c 4096 \
+  --host 0.0.0.0 --port 8081
+```
+
+### API テスト
+
+```bash
+# 疎通確認
+curl http://localhost:8081/health
+
+# チャット (OpenAI互換)
+curl -s http://localhost:8081/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "lfm2.5", "messages": [{"role": "user", "content": "こんにちは"}]}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
 ```
 
 ---
 
-## LFM-2.5 の特徴・使いどころ
+## GPU オフロードについて
 
+```bash
+# -ngl (GPU layers) の指定
+-ngl 99    # 全レイヤーをGPUに (推奨: Jetson共有VRAM)
+-ngl 20    # GPUが足りない場合は減らす (OOM対策)
+-ngl 0     # CPU のみ (遅いが確実)
 ```
-✅ 使うべき場面:
-  - 長いドキュメントのQ&A (125K ctx)
-  - メモリを節約したい (731MB)
-  - 高速推論が必要
 
-⚠️ 苦手な場面:
-  - 日本語品質: Qwen2.5 7B の方が高い
-  - ツール呼び出し: 限定的サポート
-```
+Jetson はCPU/GPU でメモリ共有のため、`-ngl 99` でも他プロセスとメモリ競合する可能性あり。
+OOM で落ちる場合は `sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'` してから再実行。
+
+---
+
+## 利用可能な GGUF モデル
+
+| HuggingFace リポジトリ | 説明 |
+|----------------------|------|
+| `LiquidAI/LFM2.5-1.2B-Instruct-GGUF` | 汎用 Instruct |
+| `LiquidAI/LFM2.5-1.2B-JP-GGUF` | **日本語特化** ← 推奨 |
+
+どちらも `-hf` フラグで llama-cli から直接起動可能（自動ダウンロード）。
 
 ---
 
 ## 参考リンク
 
-- [Liquid AI公式](https://www.liquid.ai/)
-- [HuggingFace: LiquidAI](https://huggingface.co/LiquidAI)
+- [Liquid AI 公式 llama.cpp ドキュメント](https://docs.liquid.ai/docs/inference/llama-cpp)
+- [HuggingFace: LiquidAI/LFM2.5-1.2B-Instruct](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct)
+- [HuggingFace: LiquidAI/LFM2.5-1.2B-JP-GGUF](https://huggingface.co/LiquidAI/LFM2.5-1.2B-JP-GGUF)
 - [Ollama: lfm2.5-thinking](https://ollama.com/library/lfm2.5-thinking)
-- [Ollama: nn-tsuzu/LFM2.5-1.2B-JP](https://ollama.com/nn-tsuzu/LFM2.5-1.2B-JP)
