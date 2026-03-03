@@ -4,17 +4,35 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/ui.sh"
 
-# 推奨モデル定義
+# 推奨モデル定義 (全て量子化済み・3B以上はQ4_K_M必須)
+# フォーマット: "カテゴリ | 説明 | サイズ"
 declare -A RECOMMENDED_MODELS
 RECOMMENDED_MODELS=(
-  ["qwen2.5:7b"]="Qwen2.5 7B     | 日本語最強クラス | ~4.5GB"
-  ["qwen2.5:3b"]="Qwen2.5 3B     | 軽量日本語       | ~2.0GB"
-  ["lfm2.5-thinking"]="LFM-2.5 Thinking 1.2B | SSM推論特化・Ollama公式 | ~0.7GB"
-  ["hadad/LFM2.5-1.2B:Q4_K_M"]="LFM-2.5 1.2B Instruct | SSM軽量汎用 | ~0.7GB"
-  ["phi3.5:mini"]="Phi-3.5 Mini   | コード生成       | ~2.4GB"
-  ["llama3.2:3b"]="Llama 3.2 3B   | 英語汎用         | ~2.2GB"
-  ["gemma2:2b"]="Gemma 2 2B     | 超軽量バックアップ | ~1.8GB"
-  ["mistral:7b"]="Mistral 7B     | 汎用・品質高     | ~4.1GB"
+  # LFM-2.5 (要: setup/06_setup_lfm.sh でバイナリアップグレード済み)
+  ["lfm2.5-thinking:1.2b-q4_K_M"]="[LFM] LFM-2.5 Thinking Q4    | SSM省メモリ・125K ctx | 731MB"
+  ["lfm2.5-thinking:1.2b-q8_0"]="[LFM] LFM-2.5 Thinking Q8    | SSM高品質版           | 1.2GB"
+  ["nn-tsuzu/LFM2.5-1.2B-JP"]="[LFM] LFM-2.5 日本語fine-tune | 日本語特化SSM         | ~0.7GB"
+  # Qwen2.5 (日本語最強)
+  ["qwen2.5:1.5b-instruct-q5_K_M"]="[JA]  Qwen2.5 1.5B Q5         | 超軽量日本語          | ~1.1GB"
+  ["qwen2.5:3b-instruct-q4_K_M"]="[JA]  Qwen2.5 3B Q4            | 軽量日本語 ★推奨      | 1.9GB"
+  ["qwen2.5:7b-instruct-q4_K_M"]="[JA]  Qwen2.5 7B Q4            | 日本語最高性能 ★推奨  | 4.7GB"
+  # Qwen2.5-Coder
+  ["qwen2.5-coder:3b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 3B Q4  | コード軽量 ★推奨      | 1.9GB"
+  ["qwen2.5-coder:7b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 7B Q4  | コード高性能          | 4.7GB"
+  # Qwen3 (最新世代 2025)
+  ["qwen3:1.7b-q5_K_M"]="[NEW] Qwen3 1.7B Q5            | 最新・推論機能付き軽量 | ~1.3GB"
+  ["qwen3:4b-q4_K_M"]="[NEW] Qwen3 4B Q4              | 最新・高性能 ★推奨    | ~2.6GB"
+  # Gemma 3
+  ["gemma3:1b-it-q5_K_M"]="[G3]  Gemma3 1B Q5             | 超軽量・優秀          | ~0.8GB"
+  ["gemma3:4b-it-q4_K_M"]="[G3]  Gemma3 4B Q4             | バランス優秀 ★推奨    | ~2.6GB"
+  # Llama 3.2
+  ["llama3.2:1b-instruct-q5_K_M"]="[META] Llama3.2 1B Q5         | 超軽量                | ~0.7GB"
+  ["llama3.2:3b-instruct-q4_K_M"]="[META] Llama3.2 3B Q4         | 英語汎用              | 2.0GB"
+  # DeepSeek-R1 (推論特化)
+  ["deepseek-r1:1.5b-qwen-distill-q5_K_M"]="[R1] DeepSeek-R1 1.5B Q5    | 推論特化・軽量        | ~1.2GB"
+  ["deepseek-r1:7b-qwen-distill-q4_K_M"]="[R1] DeepSeek-R1 7B Q4      | 推論特化・高性能      | 4.7GB"
+  # Mistral
+  ["mistral:7b-instruct-v0.3-q4_K_M"]="[MIS] Mistral 7B Q4           | 汎用・安定            | 4.1GB"
 )
 
 menu_models() {

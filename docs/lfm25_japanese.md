@@ -6,9 +6,40 @@
 
 | モデル | 種別 | チャット用途 | 入手方法 |
 |--------|------|------------|---------|
+| **nn-tsuzu/LFM2.5-1.2B-JP** | 日本語チャット | ✅ | **Ollama上に存在** |
+| nn-tsuzu/lfm2.5-1.2b-instruct | 汎用Instruct | ✅ | Ollama上に存在 |
 | KoichiYasuoka/lfm2.5-1.2b-japanese-ud-embeds | 形態素解析 | ❌ | HuggingFace |
-| LiquidAI公式 日本語版 | 未確認 | 不明 | - |
-| コミュニティfine-tune | 随時追加中 | 要確認 | HuggingFace |
+
+## nn-tsuzu/LFM2.5-1.2B-JP ← 日本語チャット推奨
+
+**Ollama上に公開されている日本語fine-tune版** ✅
+
+```bash
+# API経由でpull
+curl -s -X POST http://localhost:11434/api/pull \
+  -H "Content-Type: application/json" \
+  -d '{"name": "nn-tsuzu/LFM2.5-1.2B-JP"}' | \
+  python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        d = json.loads(line)
+        if d.get('status'): print(d['status'])
+    except: pass
+"
+
+# 動作確認
+curl -s -X POST http://localhost:11434/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"model": "nn-tsuzu/LFM2.5-1.2B-JP", "prompt": "機械学習とは何ですか？", "stream": false}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
+
+# インタラクティブ
+./ollama-run.sh nn-tsuzu/LFM2.5-1.2B-JP
+```
+
+> ⚠️ dustynv/ollama の古いバージョンでは pull が失敗する。
+> `bash setup/06_setup_lfm.sh` でバイナリをアップグレードしてから実行すること。
 
 ## KoichiYasuoka/lfm2.5-1.2b-japanese-ud-embeds
 

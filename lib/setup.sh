@@ -44,15 +44,19 @@ _setup_jc_with_model() {
   fi
 
   # Step 2: モデル選択 & pull
-  # LFM-2.5 は Ollama API では pull 不可 (古いバージョン) → GGUF インポートで別処理
+  # 3B以上は Q4_K_M 量子化必須。LFM-2.5 はバイナリアップグレード後に API pull。
   local items=(
-    "qwen2.5:3b"  "Qwen2.5 3B   | 軽量日本語       | ~2.0GB" "ON"
-    "qwen2.5:7b"  "Qwen2.5 7B   | 日本語最強クラス | ~4.5GB" "OFF"
-    "gemma2:2b"   "Gemma 2 2B   | 超軽量バックアップ| ~1.8GB" "OFF"
-    "phi3.5:mini" "Phi-3.5 Mini | コード生成       | ~2.4GB" "OFF"
-    "llama3.2:3b" "Llama 3.2 3B | 英語汎用         | ~2.2GB" "OFF"
-    "mistral:7b"  "Mistral 7B   | 汎用・品質高     | ~4.1GB" "OFF"
-    "LFM-2.5"     "LFM-2.5 1.2B | SSM軽量 (GGUF)  | ~0.7GB" "OFF"
+    "qwen2.5:3b-instruct-q4_K_M"              "[JA]  Qwen2.5 3B Q4        | 軽量日本語 ★         | 1.9GB" "ON"
+    "qwen2.5:7b-instruct-q4_K_M"              "[JA]  Qwen2.5 7B Q4        | 日本語最高性能       | 4.7GB" "OFF"
+    "qwen2.5-coder:3b-instruct-q4_K_M"        "[CODE] Qwen2.5-Coder 3B Q4 | コード生成軽量       | 1.9GB" "OFF"
+    "qwen3:4b-q4_K_M"                         "[NEW] Qwen3 4B Q4          | 最新・高性能 ★       | ~2.6GB" "OFF"
+    "gemma3:4b-it-q4_K_M"                     "[G3]  Gemma3 4B Q4         | バランス優秀         | ~2.6GB" "OFF"
+    "gemma3:1b-it-q5_K_M"                     "[G3]  Gemma3 1B Q5         | 超軽量               | ~0.8GB" "OFF"
+    "llama3.2:3b-instruct-q4_K_M"             "[META] Llama3.2 3B Q4      | 英語汎用             | 2.0GB" "OFF"
+    "deepseek-r1:1.5b-qwen-distill-q5_K_M"   "[R1] DeepSeek-R1 1.5B Q5   | 推論特化・軽量       | ~1.2GB" "OFF"
+    "mistral:7b-instruct-v0.3-q4_K_M"         "[MIS] Mistral 7B Q4        | 汎用・安定           | 4.1GB" "OFF"
+    "LFM-2.5"                                  "[LFM] LFM-2.5 Thinking Q4  | SSM省メモリ・125K ctx | 731MB" "OFF"
+    "LFM-2.5-JP"                               "[LFM] LFM-2.5 日本語        | 日本語特化SSM        | ~0.7GB" "OFF"
   )
 
   local selected
@@ -66,12 +70,17 @@ _setup_jc_with_model() {
   # API pull モデルと LFM-2.5 を分離
   local failed=()
   local lfm_requested=false
+  local lfm_jp_requested=false
 
   for model in $selected; do
     model=$(echo "$model" | tr -d '"')
 
     if [ "$model" = "LFM-2.5" ]; then
       lfm_requested=true
+      continue
+    fi
+    if [ "$model" = "LFM-2.5-JP" ]; then
+      lfm_jp_requested=true
       continue
     fi
 
@@ -100,11 +109,37 @@ print(last)" 2>/dev/null || echo "error")
     [ "$last_status" != "success" ] && failed+=("$model")
   done
 
-  # LFM-2.5: GGUF インポート (HuggingFace からダウンロード → /api/create)
+  # LFM-2.5 (Thinking): バイナリアップグレード → API pull → GGUF フォールバック
   if [ "$lfm_requested" = true ]; then
     clear
     bash "$SCRIPT_DIR/setup/06_setup_lfm.sh"
     press_any_key
+  fi
+
+  # LFM-2.5 日本語: バイナリアップグレード済み前提でAPI pull
+  if [ "$lfm_jp_requested" = true ]; then
+    ui_info "LFM-2.5 日本語モデルをpull中...\n(nn-tsuzu/LFM2.5-1.2B-JP)"
+    local logfile="/tmp/pull_lfm_jp_$$.log"
+    local last_status
+    last_status=$(curl -s -X POST http://localhost:11434/api/pull \
+      -H "Content-Type: application/json" \
+      -d '{"name": "nn-tsuzu/LFM2.5-1.2B-JP"}' \
+      2>&1 | tee "$logfile" | python3 -c "
+import sys, json
+last = ''
+for line in sys.stdin:
+    line = line.strip()
+    if not line: continue
+    try:
+        d = json.loads(line)
+        last = d.get('status', '')
+        if 'error' in d: last = 'error: ' + d['error']
+    except: pass
+print(last)" 2>/dev/null || echo "error")
+    rm -f "$logfile"
+    if [ "$last_status" != "success" ]; then
+      ui_error "LFM-2.5 日本語モデルのpullに失敗しました。\n先に LFM-2.5 (setup/06_setup_lfm.sh) を実行してバイナリを更新してください。"
+    fi
   fi
 
   # 最終結果
