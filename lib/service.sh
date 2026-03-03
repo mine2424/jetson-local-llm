@@ -436,7 +436,8 @@ _llamacpp_server_start() {
     -t 6 \
     --host 0.0.0.0 \
     --port "$LLAMACPP_SERVER_PORT" \
-    --log-disable \
+    --verbose \
+    --log-prefix \
     > /tmp/llama-server.log 2>&1 &
   echo $! > /tmp/llama-server.pid
 

@@ -97,5 +97,6 @@ exec "$LLAMA_SERVER" \
   --ubatch-size "$UBATCH_SIZE" \
   --threads "$N_THREADS" \
   --parallel "$PARALLEL" \
-  --log-disable \
+  --verbose \
+  --log-prefix \
   2>&1

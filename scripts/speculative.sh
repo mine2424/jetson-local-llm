@@ -84,5 +84,6 @@ exec "$LLAMA_SERVER" \
   --threads       6 \
   --host          0.0.0.0 \
   --port          $PORT \
-  --log-disable \
+  --verbose \
+  --log-prefix \
   2>&1
