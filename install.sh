@@ -139,8 +139,8 @@ fi
 
 echo ""
 
-# ─── 4. NvMap メモリ最適化 ───────────────────────────────────────────────────
-echo "── [3/6] NvMap メモリ最適化 ──"
+# ─── 4. NvMap メモリ最適化 + パフォーマンス設定 ─────────────────────────────
+echo "── [3/6] NvMap メモリ最適化 + パフォーマンス設定 ──"
 
 sudo tee /etc/sysctl.d/99-ollama-jetson.conf > /dev/null <<'EOF'
 # Jetson NvMap 用に MemFree を常時 2GB 確保する
@@ -158,7 +158,42 @@ if systemctl is-active --quiet ollama 2>/dev/null; then
   ok "ネイティブ Ollama 無効化"
 fi
 
-# ページキャッシュ解放
+# ── 電源モード: MAXN (最大パフォーマンス) ──────────────────────────────────
+info "電源モードを MAXN に設定中 (推論速度 最大化)..."
+if sudo nvpmodel -m 0 2>/dev/null; then
+  ok "nvpmodel -m 0 (MAXN) 適用"
+else
+  info "nvpmodel: スキップ (後で手動: sudo nvpmodel -m 0)"
+fi
+
+# ── クロック固定 ─────────────────────────────────────────────────────────────
+info "CPU/GPU/EMC クロックを最大に固定中..."
+if sudo jetson_clocks 2>/dev/null; then
+  ok "jetson_clocks 適用"
+else
+  info "jetson_clocks: スキップ"
+fi
+
+# ── boot 時に自動適用するサービスを登録 ──────────────────────────────────────
+info "起動時の自動パフォーマンス設定を登録中..."
+sudo tee /etc/systemd/system/jetson-perf.service > /dev/null <<'EOF'
+[Unit]
+Description=Jetson Max Performance Mode (MAXN + jetson_clocks)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'nvpmodel -m 0 && jetson_clocks'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable jetson-perf.service > /dev/null 2>&1
+ok "jetson-perf.service 登録済み (boot 時に自動で MAXN + jetson_clocks)"
+
+# ── ページキャッシュ解放 ──────────────────────────────────────────────────────
 info "ページキャッシュを解放中..."
 sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'
 MEM_FREE=$(awk '/MemFree/ {print int($2/1024)}' /proc/meminfo)

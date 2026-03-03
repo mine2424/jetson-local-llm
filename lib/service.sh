@@ -58,6 +58,16 @@ _ollama_is_docker() {
   sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"
 }
 
+# GPU/CPU 最適化を暗黙適用 (全起動関数から呼ぶ)
+# - MAXN 電源モード (nvpmodel -m 0)
+# - クロック固定   (jetson_clocks)
+# - ページキャッシュ解放 (drop_caches)
+_apply_perf_mode() {
+  sudo nvpmodel -m 0     2>/dev/null || true
+  sudo jetson_clocks     2>/dev/null || true
+  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+}
+
 _service_status() {
   local report="=== サービスステータス ===\n\n"
 
@@ -146,8 +156,8 @@ _ollama_start() {
     return
   fi
 
-  ui_info "Ollama (Docker) を起動中...\nページキャッシュを解放してGPUメモリを確保します"
-  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+  ui_info "Ollama (Docker) を起動中...\nMAXN 電源モード + クロック固定 + メモリ解放を適用します"
+  _apply_perf_mode
   sudo docker start ollama > /dev/null 2>&1
 
   local i=0
@@ -194,11 +204,11 @@ except:
 }
 
 _ollama_restart() {
-  ui_info "Ollamaを再起動中...\nページキャッシュを解放してGPUメモリを確保します"
+  ui_info "Ollamaを再起動中...\nMAXN 電源モード + クロック固定 + メモリ解放を適用します"
   if _ollama_is_docker; then
     sudo docker stop ollama > /dev/null 2>/dev/null || true
     sleep 1
-    sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+    _apply_perf_mode
     sudo docker start ollama > /dev/null 2>&1
     sleep 3
   else
@@ -283,7 +293,7 @@ _container_update() {
   echo ""
   echo "── [2/4] 既存コンテナを停止・削除 ──"
   sudo docker stop ollama 2>/dev/null || true
-  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+  _apply_perf_mode
   sudo docker rm ollama 2>/dev/null || true
 
   echo ""
@@ -400,19 +410,28 @@ _llamacpp_server_start() {
   local target
   target=$(ui_menu "起動するモデル (GGUF) を選択" "${items[@]}") || return
 
-  ui_info "llama-server を起動中...\nGPU layer: -ngl 99\nport: $LLAMACPP_SERVER_PORT"
+  ui_info "llama-server を起動中...\nMAXN + jetson_clocks + GPU全オフロード(-ngl 999) + Flash Attention\nport: $LLAMACPP_SERVER_PORT"
 
   # 既存プロセスを停止
   pkill -f "llama-server.*$LLAMACPP_SERVER_PORT" 2>/dev/null || true
   sleep 1
 
-  # NvMap キャッシュ解放
-  sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
+  # パフォーマンス最適化を暗黙適用
+  _apply_perf_mode
+
+  # CUDA最適化環境変数
+  export GGML_CUDA_NO_PEER_COPY=1
+  export CUDA_VISIBLE_DEVICES=0
 
   nohup "$LLAMACPP_BIN/llama-server" \
     -m "$target" \
-    -ngl 99 \
+    -ngl 999 \
+    --flash-attn \
+    --cache-type-k q8_0 \
+    --cache-type-v q8_0 \
     -c 4096 \
+    -b 512 -ub 512 \
+    -t 6 \
     --host 0.0.0.0 \
     --port "$LLAMACPP_SERVER_PORT" \
     --log-disable \
