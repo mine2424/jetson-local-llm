@@ -51,29 +51,44 @@ LFM-2.5の日本語fine-tuneが揃うまでの代替：
 
 ## LFM-2.5 + 日本語プロンプト戦略
 
-英語ベースのLFM-2.5でも日本語入出力は可能。システムプロンプトで調整：
+英語ベースのLFM-2.5でも日本語入出力は可能。
+Modelfileでシステムプロンプトを設定し、**Ollama API `/api/create`** でインポートする。
 
 ```bash
-# Ollama Modelfile の例
-cat > ~/.ollama/Modelfile_lfm25_ja <<'EOF'
-FROM lfm2.5:3b
+# 日本語システムプロンプト付きモデルを作成 (API経由)
+# ベースモデルに lfm2.5-local (setup/06_setup_lfm.sh でインポート済み) を使う
+
+MODELFILE='FROM lfm2.5-local
 
 SYSTEM """
 あなたは日本語を話す有能なAIアシスタントです。
 ユーザーへの返答は必ず日本語で行ってください。
 """
 
-PARAMETER num_ctx 8192
-PARAMETER temperature 0.7
-EOF
+PARAMETER num_ctx 4096
+PARAMETER temperature 0.7'
 
-ollama create lfm2.5-ja -f ~/.ollama/Modelfile_lfm25_ja
-ollama run lfm2.5-ja "Jetsonでローカルモデルを動かす利点を教えて"
+# API /api/create でモデル登録
+curl -s -X POST http://localhost:11434/api/create \
+  -H "Content-Type: application/json" \
+  -d "$(python3 -c "
+import json
+modelfile = '''$MODELFILE'''
+print(json.dumps({'name': 'lfm2.5-ja', 'modelfile': modelfile, 'stream': False}))
+")" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))"
+
+# 動作確認 (API)
+curl -s -X POST http://localhost:11434/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"model": "lfm2.5-ja", "prompt": "Jetsonでローカルモデルを動かす利点を教えて", "stream": false}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
+
+# インタラクティブチャット
+./ollama-run.sh lfm2.5-ja
 ```
 
 ## TODO（実機確認時に更新）
 
-- [ ] LFM-2.5 1B/3B/7B の日本語応答品質を実測
-- [ ] `ollama search lfm` で公式サポート確認
+- [ ] LFM-2.5 1.2B の日本語応答品質を実測
 - [ ] HuggingFaceの日本語fine-tune版GGUFを発見したら追記
 - [ ] Qwen2.5 7B との日本語品質比較ベンチマーク
