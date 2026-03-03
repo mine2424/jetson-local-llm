@@ -19,9 +19,10 @@ RECOMMENDED_MODELS=(
   # Qwen2.5-Coder
   ["qwen2.5-coder:3b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 3B Q4  | コード軽量 ★推奨      | 1.9GB"
   ["qwen2.5-coder:7b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 7B Q4  | コード高性能          | 4.7GB"
-  # Qwen3 (最新世代 2025)
-  ["qwen3:1.7b-q5_K_M"]="[NEW] Qwen3 1.7B Q5            | 最新・推論機能付き軽量 | ~1.3GB"
-  ["qwen3:4b-q4_K_M"]="[NEW] Qwen3 4B Q4              | 最新・高性能 ★推奨    | ~2.6GB"
+  # Qwen3.5 (最新世代 2026年3月 vision+tools+thinking+256K ctx)
+  ["qwen3.5:0.8b"]="[Q3.5] Qwen3.5 0.8B             | vision・超軽量・256K   | 1.0GB"
+  ["qwen3.5:2b-q4_K_M"]="[Q3.5] Qwen3.5 2B Q4          | vision・軽量・256K    | 1.9GB"
+  ["qwen3.5:4b-q4_K_M"]="[Q3.5] Qwen3.5 4B Q4          | vision・高性能 ★最推奨 | 3.4GB"
   # Gemma 3
   ["gemma3:1b-it-q5_K_M"]="[G3]  Gemma3 1B Q5             | 超軽量・優秀          | ~0.8GB"
   ["gemma3:4b-it-q4_K_M"]="[G3]  Gemma3 4B Q4             | バランス優秀 ★推奨    | ~2.6GB"
