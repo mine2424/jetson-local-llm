@@ -47,8 +47,9 @@ fi
 # ─── システム最適化 ──────────────────────────────────────────────────────────────
 info "システム最適化を適用中..."
 
-# MAXN 電源モード
-sudo nvpmodel -m 0 2>/dev/null && ok "nvpmodel MAXN" || info "nvpmodel: スキップ"
+# MAXN 電源モード — ID をボード設定から取得 (Orin Nano Super は 0 番でない場合がある)
+MAXN_ID=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2 || echo "0")
+sudo nvpmodel -m "${MAXN_ID:-0}" 2>/dev/null && ok "nvpmodel MAXN (ID=${MAXN_ID:-0})" || info "nvpmodel: スキップ"
 
 # クロック固定
 sudo jetson_clocks 2>/dev/null && ok "jetson_clocks" || info "jetson_clocks: スキップ"
@@ -61,12 +62,23 @@ ok "drop_caches"
 MEMFREE_MB=$(grep MemFree /proc/meminfo | awk '{print int($2/1024)}')
 info "空きメモリ: ${MEMFREE_MB} MB"
 
+# ─── CPU / GPU モード自動検出 ──────────────────────────────────────────────────
+LLAMA_SERVER_DIR="$(dirname "$LLAMA_SERVER")"
+USE_GPU=false
+if ls "$LLAMA_SERVER_DIR"/libggml-cuda.so* >/dev/null 2>&1; then
+  USE_GPU=true
+fi
+
 # ─── 起動 ───────────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🚀 llama-server 最適化起動"
+echo "  🚀 llama-server 起動"
 echo "  モデル : $(basename $MODEL_PATH)"
-echo "  GPU    : 全レイヤー (-ngl $N_GPU_LAYERS)"
+if $USE_GPU; then
+  echo "  モード : GPU (-ngl $N_GPU_LAYERS) + Flash Attention"
+else
+  echo "  モード : CPU (-ngl 0)  ← ~7 t/s"
+fi
 echo "  Context: ${CONTEXT_SIZE} tokens"
 echo "  API    : http://${HOST}:${PORT}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -78,25 +90,27 @@ echo "      -H 'Content-Type: application/json' \\"
 echo "      -d '{\"model\":\"lfm2.5\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'"
 echo ""
 
-# 環境変数でCUDA最適化
-# FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
-export GGML_CUDA_FORCE_MMQ=1
-export GGML_CUDA_NO_PEER_COPY=1
-export CUDA_VISIBLE_DEVICES=0
+# 起動引数を組み立て (CPU/GPU 共通)
+LAUNCH_ARGS=(
+  --model "$MODEL_PATH"
+  --host "$HOST"
+  --port "$PORT"
+  --ctx-size "$CONTEXT_SIZE"
+  --batch-size "$BATCH_SIZE"
+  --ubatch-size "$UBATCH_SIZE"
+  --threads "$N_THREADS"
+  --parallel "$PARALLEL"
+  --verbose
+  --log-prefix
+)
 
-exec "$LLAMA_SERVER" \
-  --model "$MODEL_PATH" \
-  --host "$HOST" \
-  --port "$PORT" \
-  -ngl "$N_GPU_LAYERS" \
-  --flash-attn \
-  --cache-type-k q8_0 \
-  --cache-type-v q8_0 \
-  --ctx-size "$CONTEXT_SIZE" \
-  --batch-size "$BATCH_SIZE" \
-  --ubatch-size "$UBATCH_SIZE" \
-  --threads "$N_THREADS" \
-  --parallel "$PARALLEL" \
-  --verbose \
-  --log-prefix \
-  2>&1
+if $USE_GPU; then
+  # CUDA最適化環境変数
+  # FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
+  export GGML_CUDA_FORCE_MMQ=1
+  export GGML_CUDA_NO_PEER_COPY=1
+  export CUDA_VISIBLE_DEVICES=0
+  LAUNCH_ARGS+=(-ngl "$N_GPU_LAYERS" --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+fi
+
+exec "$LLAMA_SERVER" "${LAUNCH_ARGS[@]}" 2>&1

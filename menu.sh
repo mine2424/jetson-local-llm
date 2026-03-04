@@ -29,11 +29,16 @@ main_menu() {
       model_count=$(get_models | grep -c . 2>/dev/null || echo "0")
     fi
 
+    local cuda_status="❌ CPU only"
+    if ls "$HOME/llama.cpp/build/bin/libggml-cuda.so"* >/dev/null 2>&1; then
+      cuda_status="✅ CUDA"
+    fi
+
     local mem_used mem_total
     mem_used=$(free -h | awk '/^Mem/{print $3}')
     mem_total=$(free -h | awk '/^Mem/{print $2}')
 
-    local status_line="Ollama: $ollama_status  |  モデル: ${model_count}件  |  RAM: $mem_used / $mem_total"
+    local status_line="Ollama: $ollama_status  |  llama.cpp: $cuda_status  |  モデル: ${model_count}件  |  RAM: $mem_used / $mem_total"
 
     local choice
     choice=$(whiptail \

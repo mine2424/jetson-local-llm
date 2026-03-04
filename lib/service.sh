@@ -63,7 +63,10 @@ _ollama_is_docker() {
 # - クロック固定   (jetson_clocks)
 # - ページキャッシュ解放 (drop_caches)
 _apply_perf_mode() {
-  sudo nvpmodel -m 0     2>/dev/null || true
+  # MAXN モード ID をボード設定から取得 (Orin Nano Super は 0 番でない場合がある)
+  local maxn_id
+  maxn_id=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2)
+  sudo nvpmodel -m "${maxn_id:-0}" 2>/dev/null || true
   sudo jetson_clocks     2>/dev/null || true
   sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
 }
@@ -303,6 +306,8 @@ _container_update() {
     --name ollama \
     --runtime nvidia \
     -e NVIDIA_VISIBLE_DEVICES=all \
+    -e GGML_CUDA_NO_VMM=1 \
+    -e OLLAMA_NUM_GPU=999 \
     -e OLLAMA_FLASH_ATTENTION=1 \
     -e OLLAMA_MAX_LOADED_MODELS=1 \
     -e OLLAMA_KEEP_ALIVE=5m \
@@ -394,6 +399,12 @@ _llamacpp_server_start() {
     return
   fi
 
+  # CPU / GPU モード自動検出
+  local use_gpu=false
+  if ls "$LLAMACPP_BIN"/libggml-cuda.so* >/dev/null 2>&1; then
+    use_gpu=true
+  fi
+
   # GGUFファイルを選択
   local gguf_files
   gguf_files=$(ls "$GGUF_DIR"/*.gguf 2>/dev/null)
@@ -410,7 +421,11 @@ _llamacpp_server_start() {
   local target
   target=$(ui_menu "起動するモデル (GGUF) を選択" "${items[@]}") || return
 
-  ui_info "llama-server を起動中...\nMAXN + jetson_clocks + GPU全オフロード(-ngl 999) + Flash Attention\nport: $LLAMACPP_SERVER_PORT"
+  if $use_gpu; then
+    ui_info "llama-server を起動中...\nGPU モード: MAXN + jetson_clocks + -ngl 999 + Flash Attention\nport: $LLAMACPP_SERVER_PORT"
+  else
+    ui_info "llama-server を起動中...\nCPU モード: -ngl 0 (GPU なし) — ~7 t/s\nGPU ビルドは: Setup → 4. llama.cpp ビルド単体\nport: $LLAMACPP_SERVER_PORT"
+  fi
 
   # 既存プロセスを停止
   pkill -f "llama-server.*$LLAMACPP_SERVER_PORT" 2>/dev/null || true
@@ -419,25 +434,28 @@ _llamacpp_server_start() {
   # パフォーマンス最適化を暗黙適用
   _apply_perf_mode
 
-  # CUDA最適化環境変数
-  # FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
-  export GGML_CUDA_FORCE_MMQ=1
-  export GGML_CUDA_NO_PEER_COPY=1
-  export CUDA_VISIBLE_DEVICES=0
+  # 起動引数を組み立て (CPU/GPU 共通)
+  local launch_args=(
+    -m "$target"
+    -c 4096
+    -b 512 -ub 512
+    -t 6
+    --host 0.0.0.0
+    --port "$LLAMACPP_SERVER_PORT"
+    --verbose
+    --log-prefix
+  )
 
-  nohup "$LLAMACPP_BIN/llama-server" \
-    -m "$target" \
-    -ngl 999 \
-    --flash-attn \
-    --cache-type-k q8_0 \
-    --cache-type-v q8_0 \
-    -c 4096 \
-    -b 512 -ub 512 \
-    -t 6 \
-    --host 0.0.0.0 \
-    --port "$LLAMACPP_SERVER_PORT" \
-    --verbose \
-    --log-prefix \
+  if $use_gpu; then
+    # CUDA最適化環境変数
+    # FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
+    export GGML_CUDA_FORCE_MMQ=1
+    export GGML_CUDA_NO_PEER_COPY=1
+    export CUDA_VISIBLE_DEVICES=0
+    launch_args+=(-ngl 999 --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+  fi
+
+  nohup "$LLAMACPP_BIN/llama-server" "${launch_args[@]}" \
     > /tmp/llama-server.log 2>&1 &
   echo $! > /tmp/llama-server.pid
 

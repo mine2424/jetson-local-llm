@@ -165,6 +165,8 @@ sudo docker run -d \
   --name "$CONTAINER_NAME" \
   --runtime nvidia \
   -e NVIDIA_VISIBLE_DEVICES=all \
+  -e GGML_CUDA_NO_VMM=1 \
+  -e OLLAMA_NUM_GPU=999 \
   -e OLLAMA_FLASH_ATTENTION=1 \
   -e OLLAMA_MAX_LOADED_MODELS=1 \
   -e OLLAMA_KEEP_ALIVE=5m \

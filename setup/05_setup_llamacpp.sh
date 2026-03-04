@@ -36,7 +36,12 @@ if ! command -v cmake &>/dev/null; then
 fi
 ok "cmake: $(cmake --version | head -1)"
 
-# CUDA (nvcc)
+# CUDA (nvcc) — PATH にない場合は /usr/local/cuda/bin を自動追加
+if ! command -v nvcc &>/dev/null && [ -x "/usr/local/cuda/bin/nvcc" ]; then
+  export PATH="/usr/local/cuda/bin:$PATH"
+  info "nvcc を PATH に追加: /usr/local/cuda/bin"
+fi
+
 if command -v nvcc &>/dev/null; then
   ok "CUDA: $(nvcc --version | grep release | awk '{print $5}' | tr -d ',')"
   USE_CUDA=ON

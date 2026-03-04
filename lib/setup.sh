@@ -12,6 +12,7 @@ menu_setup() {
       "2" "📦 jetson-containers + モデルpull (まとめてセットアップ)" \
       "3" "🧠 LFM-2.5 セットアップ (Ollama試行 → llama.cpp fallback)" \
       "4" "🔨 llama.cpp ビルド単体 (CUDA sm_87)" \
+      "5" "⚡ GPU最適化 診断・適用 (09_optimize_perf.sh)" \
       "B" "← 戻る"
     ) || return
 
@@ -20,6 +21,7 @@ menu_setup() {
       2) _setup_jc_with_model ;;
       3) _setup_lfm ;;
       4) _setup_llamacpp_only ;;
+      5) _setup_optimize_perf ;;
       B) return ;;
     esac
   done
@@ -170,6 +172,12 @@ _setup_lfm() {
 }
 
 
+_setup_optimize_perf() {
+  clear
+  bash "$SCRIPT_DIR/setup/09_optimize_perf.sh"
+  press_any_key
+}
+
 _setup_llamacpp_only() {
   if [ -f "$HOME/llama.cpp/build/bin/llama-server" ]; then
     if ! ui_confirm "llama.cpp は既にビルド済みです。\n再ビルドしますか？\n(最新コミットに更新してからビルドします)"; then
@@ -178,6 +186,8 @@ _setup_llamacpp_only() {
   fi
   ui_confirm "llama.cpp を CUDA対応でビルドします。\n初回は 10〜20 分かかります。続けますか？" || return
   clear
+  # nvcc が PATH にない場合に備えて CUDA bin を追加
+  export PATH="/usr/local/cuda/bin:$PATH"
   bash "$SCRIPT_DIR/setup/05_setup_llamacpp.sh"
   press_any_key
 }

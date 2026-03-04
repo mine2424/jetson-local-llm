@@ -32,7 +32,7 @@ head_ "── [1/5] 現状診断 ──"
 # 電源モード確認
 CURRENT_POWER=$(sudo nvpmodel -q 2>/dev/null | grep "NV Power Mode" | awk '{print $NF}' || echo "UNKNOWN")
 info "現在の電源モード: $CURRENT_POWER"
-if [[ "$CURRENT_POWER" != "MAXN" ]]; then
+if [[ "$CURRENT_POWER" != *"MAXN"* ]]; then
   echo -e "  ${RED}⚠️  MAXN モードではありません！パフォーマンスが制限されています${NC}"
 else
   ok "MAXN モード動作中"
@@ -62,20 +62,36 @@ for p in "$HOME/llama.cpp/build/bin/llama-cli" "/usr/local/bin/llama-cli"; do
 done
 
 if [ -n "$LLAMA_BIN" ]; then
-  # CUDA サポート確認
-  if "$LLAMA_BIN" --version 2>&1 | grep -qi "CUDA\|cuda"; then
-    ok "llama-cli: CUDA ビルド確認済み"
+  LLAMA_BIN_DIR="$(dirname "$LLAMA_BIN")"
+  # 新しい llama.cpp は CUDA バックエンドを libggml-cuda.so として分離している
+  # ldd で libcuda を探す従来の方法は機能しない (dlopen されるため)
+  if ls "$LLAMA_BIN_DIR"/libggml-cuda.so* >/dev/null 2>&1; then
+    ok "llama-cli: CUDA ビルド確認済み (libggml-cuda.so あり)"
   else
-    # バイナリの CUDA リンクを確認
-    if ldd "$LLAMA_BIN" 2>/dev/null | grep -qi "libcuda\|libcublas"; then
-      ok "llama-cli: CUDA リンク確認済み"
-    else
-      err "llama-cli: CUDAリンクなし → CPU専用ビルドの可能性"
-      echo "  → bash setup/05_setup_llamacpp.sh を再実行してください"
-    fi
+    err "llama-cli: CUDA ビルドなし (libggml-cuda.so が見つからない)"
+    echo "  → Setup → 4. llama.cpp ビルド単体 を再実行してください"
   fi
 else
   err "llama-cli が見つかりません → bash setup/05_setup_llamacpp.sh を実行してください"
+fi
+
+# Ollama コンテナの GPU 環境変数確認
+if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"; then
+  CONTAINER_ENV=$(sudo docker inspect ollama --format '{{range .Config.Env}}{{.}} {{end}}' 2>/dev/null || true)
+  if echo "$CONTAINER_ENV" | grep -q "GGML_CUDA_NO_VMM=1"; then
+    ok "Ollama: GGML_CUDA_NO_VMM=1 設定済み"
+  else
+    err "Ollama: GGML_CUDA_NO_VMM=1 未設定 → GPU 割り当てが失敗する可能性あり"
+    echo "  → bash setup/08_setup_jetson_containers.sh を再実行してください"
+  fi
+  if echo "$CONTAINER_ENV" | grep -q "OLLAMA_NUM_GPU=999"; then
+    ok "Ollama: OLLAMA_NUM_GPU=999 設定済み"
+  else
+    err "Ollama: OLLAMA_NUM_GPU=999 未設定 → 一部レイヤーが CPU 推論になる可能性あり"
+    echo "  → bash setup/08_setup_jetson_containers.sh を再実行してください"
+  fi
+else
+  info "Ollama コンテナ未起動 (GPU 環境変数の確認をスキップ)"
 fi
 
 echo ""
@@ -85,9 +101,12 @@ head_ "── [2/5] 電源・クロック最適化 ──"
 
 if $APPLY; then
   # MAXN モード（最大パフォーマンス）
+  # ID をボード設定から取得 (Orin Nano Super では 0 番でない場合がある)
   info "電源モードを MAXN に設定..."
-  sudo nvpmodel -m 0
-  ok "nvpmodel -m 0 (MAXN) 適用"
+  MAXN_ID=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2 || echo "")
+  MAXN_ID="${MAXN_ID:-0}"
+  sudo nvpmodel -m "$MAXN_ID"
+  ok "nvpmodel -m $MAXN_ID (MAXN) 適用"
 
   # クロック固定（ブースト維持）
   info "クロックを最大に固定..."
@@ -118,12 +137,17 @@ echo ""
 cat << 'FLAGEOF'
   ⚡ 推奨フラグ（7 t/s → 40〜60 t/s）:
 
-  重要度 ★★★  GPU オフロード (これがないとCPU推論になる):
-    -ngl 999              # 全レイヤーをGPUに乗せる（必須！）
+  重要度 ★★★  GPU オフロード:
+    -ngl 999              # GPU ビルド時: 全レイヤーGPUオフロード（必須！）
+    -ngl 0                # CPU 専用モード (libggml-cuda.so なし → 自動適用)
 
   重要度 ★★★  電源モード:
     sudo nvpmodel -m 0   # MAXN モード
     sudo jetson_clocks   # クロック固定
+
+  重要度 ★★★  Jetson 統合メモリ対応 (Ollama Docker / llama-server):
+    GGML_CUDA_NO_VMM=1   # Jetson は CUDA VMM 非対応のため必須
+    OLLAMA_NUM_GPU=999   # 全レイヤー GPU オフロード (-ngl 999 相当)
 
   重要度 ★★   Flash Attention:
     --flash-attn          # メモリ使用量削減 + 高速化
@@ -165,33 +189,49 @@ if [ ! -f "$MODEL_PATH" ]; then
   exit 1
 fi
 
-# クロック最大化（要sudo）
-sudo nvpmodel -m 0 2>/dev/null || true
+# クロック最大化（要sudo） — MAXN ID をボード設定から取得
+MAXN_ID=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2 || echo "0")
+sudo nvpmodel -m "${MAXN_ID:-0}" 2>/dev/null || true
 sudo jetson_clocks 2>/dev/null || true
 echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null 2>&1 || true
+
+# CPU / GPU モード自動検出
+LLAMA_BIN_DIR="$(dirname "$LLAMA_BIN")"
+USE_GPU=false
+if ls "$LLAMA_BIN_DIR"/libggml-cuda.so* >/dev/null 2>&1; then
+  USE_GPU=true
+fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ⚡ LFM2.5-1.2B 最適化推論"
 echo "  モデル: $(basename $MODEL_PATH)"
-echo "  GPU layers: ALL (-ngl 999)"
-echo "  Flash Attention: ON"
+if $USE_GPU; then
+  echo "  モード : GPU (-ngl 999) + Flash Attention"
+else
+  echo "  モード : CPU (-ngl 0) ← ~7 t/s"
+fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-"$LLAMA_BIN" \
-  -m "$MODEL_PATH" \
-  -ngl 999 \
-  --flash-attn \
-  --cache-type-k q8_0 \
-  --cache-type-v q8_0 \
-  -c 2048 \
-  -b 512 -ub 512 \
-  -t 6 \
-  -p "$PROMPT" \
-  -n 200 \
-  --temp 0.7 \
-  --repeat-penalty 1.1 \
-  2>&1
+ARGS=(
+  -m "$MODEL_PATH"
+  -c 2048
+  -b 512 -ub 512
+  -t 6
+  -p "$PROMPT"
+  -n 200
+  --temp 0.7
+  --repeat-penalty 1.1
+)
+
+if $USE_GPU; then
+  export GGML_CUDA_FORCE_MMQ=1
+  export GGML_CUDA_NO_PEER_COPY=1
+  export CUDA_VISIBLE_DEVICES=0
+  ARGS+=(-ngl 999 --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+fi
+
+"$LLAMA_BIN" "${ARGS[@]}" 2>&1
 SCRIPTEOF
 
 chmod +x "$OPTIMIZED_SCRIPT"
