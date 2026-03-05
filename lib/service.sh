@@ -10,45 +10,31 @@ GGUF_DIR="$HOME/.ollama/models/lfm25_gguf"
 
 menu_service() {
   while true; do
-    # llama-server 状態をヘッダに反映
-    local lls_status="⏹️ 停止"
-    if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
-      lls_status="✅ 稼働中"
-    fi
+    # ヘッダ: Ollama と llama-server の状態
+    local ollama_st="⏹️ 停止"
+    check_ollama 2>/dev/null && ollama_st="✅ 稼働中"
+    local lls_st="⏹️ 停止"
+    curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok" && lls_st="✅ 稼働中"
 
     local choice
-    choice=$(ui_menu "🚀 サービス管理  [LFM-2.5 llama-server: $lls_status]" \
-      "1"  "📊 ステータス確認 (全サービス)" \
-      "2"  "▶️  Ollama 起動 (drop_caches → docker start)" \
-      "3"  "⏹️  Ollama 停止" \
-      "4"  "🔄 Ollama 再起動" \
-      "5"  "📜 Ollamaログ表示" \
-      "6"  "💬 ollama run (インタラクティブチャット)" \
-      "7"  "📡 API 疎通テスト (Ollama)" \
-      "8"  "🐳 コンテナイメージ更新 (autotag → 再作成)" \
-      "9"  "⚡ Jetson リソースモニタ (tegrastats)" \
-      "L1" "▶️  LFM-2.5 llama-server 起動 (port $LLAMACPP_SERVER_PORT)" \
-      "L2" "⏹️  LFM-2.5 llama-server 停止" \
-      "L3" "📡 LFM-2.5 API 疎通テスト" \
-      "L4" "📜 llama-server ログ表示" \
-      "B"  "← 戻る"
+    choice=$(ui_menu "🚀 サービス管理  [Ollama: $ollama_st  |  llama-server: $lls_st]" \
+      "1" "📊 ステータス    — GPU使用率・モデル・メモリ" \
+      "2" "▶️  起動          — Ollama (GPU最適化込み)" \
+      "3" "⏹️  停止" \
+      "4" "🔄 再起動" \
+      "5" "💬 チャット      — モデル選択 → 対話" \
+      "6" "📜 ログ表示" \
+      "B" "← 戻る"
     ) || return
 
     case "$choice" in
-      1)  _service_status ;;
-      2)  _ollama_start ;;
-      3)  _ollama_stop ;;
-      4)  _ollama_restart ;;
-      5)  _ollama_logs ;;
-      6)  _ollama_run_interactive ;;
-      7)  _api_test ;;
-      8)  _container_update ;;
-      9)  _tegrastats_monitor ;;
-      L1) _llamacpp_server_start ;;
-      L2) _llamacpp_server_stop ;;
-      L3) _llamacpp_api_test ;;
-      L4) _llamacpp_logs ;;
-      B)  return ;;
+      1) _service_status ;;
+      2) _ollama_start ;;
+      3) _ollama_stop ;;
+      4) _ollama_restart ;;
+      5) _ollama_run_interactive ;;
+      6) _service_logs ;;
+      B) return ;;
     esac
   done
 }
@@ -74,78 +60,96 @@ _apply_perf_mode() {
 _service_status() {
   local report="=== サービスステータス ===\n\n"
 
-  # Ollama Docker コンテナ
-  if command -v docker &>/dev/null; then
-    if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"; then
-      local cstatus cimage
-      cstatus=$(sudo docker ps --filter "name=^ollama$" --format "{{.Status}}" 2>/dev/null)
-      cimage=$(sudo docker ps --filter "name=^ollama$" --format "{{.Image}}" 2>/dev/null)
-      report+="[Ollama Docker]  ✅ 稼働中 ($cstatus)\n"
-      report+="[イメージ]       $cimage\n"
-    elif _ollama_is_docker; then
-      report+="[Ollama Docker]  ⏹️ 停止 (コンテナ存在)\n"
+  # ── Ollama ──────────────────────────────────────────────────────────────────
+  if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"; then
+    local cstatus cimage
+    cstatus=$(sudo docker ps --filter "name=^ollama$" --format "{{.Status}}" 2>/dev/null)
+    cimage=$(sudo docker ps --filter "name=^ollama$" --format "{{.Image}}" 2>/dev/null)
+    report+="[Ollama]     ✅ 稼働中 ($cstatus)\n"
+    report+="[イメージ]   $cimage\n"
+    # GPU env 確認
+    local env
+    env=$(sudo docker inspect ollama --format '{{range .Config.Env}}{{.}} {{end}}' 2>/dev/null || true)
+    if echo "$env" | grep -q "GGML_CUDA_NO_VMM=1"; then
+      report+="[GPU env]    ✅ GGML_CUDA_NO_VMM=1 設定済み\n"
     else
-      report+="[Ollama Docker]  ℹ️ コンテナなし\n"
+      report+="[GPU env]    ❌ GGML_CUDA_NO_VMM=1 未設定 → Setup → GPU修正 を実行\n"
     fi
+  elif _ollama_is_docker; then
+    report+="[Ollama]     ⏹️ 停止中 (コンテナ存在)\n"
+  else
+    report+="[Ollama]     ℹ️ コンテナなし → Setup → 初回セットアップ\n"
   fi
 
-  # LFM-2.5 llama-server
+  if check_ollama 2>/dev/null; then
+    local models_count running
+    models_count=$(get_models 2>/dev/null | wc -l || echo "?")
+    report+="[API]        ✅ 応答あり (モデル: ${models_count}件)\n"
+    running=$(curl -s http://localhost:11434/api/ps 2>/dev/null | \
+      python3 -c "
+import sys,json
+try:
+    for m in json.load(sys.stdin).get('models',[]):
+        mb = m.get('size_vram',0)//1048576
+        print(f\"  {m['name']} ({mb}MB VRAM)\")
+except: pass
+" 2>/dev/null || true)
+    if [ -n "$running" ]; then
+      report+="[実行中]     \n$running\n"
+    fi
+  else
+    report+="[API]        ⚠️  応答なし (port 11434)\n"
+  fi
+
+  # ── llama-server ────────────────────────────────────────────────────────────
+  report+="\n"
   if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
     local pid
     pid=$(cat /tmp/llama-server.pid 2>/dev/null || echo "?")
-    local model_file
-    model_file=$(ls "$GGUF_DIR"/*.gguf 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "不明")
-    report+="[LFM-2.5 Server] ✅ 稼働中 (port $LLAMACPP_SERVER_PORT, PID: $pid)\n"
-    report+="[モデル]         $model_file\n"
+    report+="[llama-srv]  ✅ 稼働中 port $LLAMACPP_SERVER_PORT (PID: $pid)\n"
   else
-    if [ -f "$LLAMACPP_BIN/llama-server" ]; then
-      report+="[LFM-2.5 Server] ⏹️ 停止 (llama.cpp ビルド済み)\n"
-    else
-      report+="[LFM-2.5 Server] ℹ️ 未セットアップ (Setup → LFM-2.5)\n"
-    fi
+    report+="[llama-srv]  ⏹️ 停止\n"
   fi
 
-  # Ollama API
-  if check_ollama; then
-    local models_count
-    models_count=$(get_models | wc -l)
-    report+="[Ollama API]     ✅ 応答あり (モデル数: ${models_count}件)\n"
+  # ── GPU / メモリ ─────────────────────────────────────────────────────────────
+  report+="\n=== GPU / メモリ ===\n"
+  local gpu_info
+  gpu_info=$(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu \
+    --format=csv,noheader 2>/dev/null | \
+    awk -F',' '{printf "GPU使用率:%s  VRAM:%s/%s  温度:%s\n",$1,$2,$3,$4}' || echo "nvidia-smi 取得失敗")
+  report+="$gpu_info\n"
+  report+="$(free -h | head -2)\n"
 
-    # 実行中モデル (API /api/ps)
-    local running
-    running=$(curl -s http://localhost:11434/api/ps 2>/dev/null | \
-      python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for m in data.get('models', []):
-        size_mb = m.get('size_vram', 0) // 1048576
-        print(f\"  {m['name']}  ({size_mb}MB VRAM)\")
-except:
-    pass
-" 2>/dev/null || true)
-    if [ -n "$running" ]; then
-      report+="[実行中モデル]   \n$running\n"
-    else
-      report+="[実行中モデル]   なし\n"
-    fi
-  else
-    report+="[Ollama API]     ⚠️ 応答なし (port 11434)\n"
-  fi
-
-  # メモリ
-  report+="\n=== メモリ ===\n$(free -h | head -2)\n"
-
-  # CPU / GPU 温度
+  # ── Tegrastats ──────────────────────────────────────────────────────────────
   if command -v tegrastats &>/dev/null; then
     local tstat
     tstat=$(timeout 2 tegrastats 2>/dev/null | head -1 || echo "取得失敗")
     report+="\n=== Tegrastats ===\n$tstat\n"
   fi
 
+  # ── 電源モード ───────────────────────────────────────────────────────────────
+  local power_mode
+  power_mode=$(sudo nvpmodel -q 2>/dev/null | grep "NV Power Mode" | awk '{print $NF}' || echo "?")
+  report+="\n電源モード: $power_mode"
+
   whiptail --title "$TITLE - ステータス" \
     --scrolltext \
     --msgbox "$report" $HEIGHT $WIDTH
+}
+
+# ログ表示: Ollama + llama-server を選択して表示
+_service_logs() {
+  local choice
+  choice=$(ui_menu "📜 ログ表示" \
+    "1" "Ollama コンテナログ (docker logs)" \
+    "2" "llama-server ログ (/tmp/llama-server.log)" \
+    "B" "← 戻る"
+  ) || return
+
+  case "$choice" in
+    1) _ollama_logs ;;
+    2) _llamacpp_logs ;;
+  esac
 }
 
 _ollama_start() {

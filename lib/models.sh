@@ -49,24 +49,18 @@ menu_models() {
 
     local choice
     choice=$(ui_menu "📦 モデル管理" \
-      "1" "📋 インストール済みモデル一覧" \
-      "2" "⬇️  推奨モデルをpull (選択式)" \
-      "3" "⬇️  推奨モデルを全部まとめてpull" \
-      "4" "🔍 モデル名を直接指定してpull" \
-      "5" "📂 GGUFファイルをインポート" \
-      "6" "🗑️  モデルを削除" \
-      "7" "💬 モデルをテスト実行" \
+      "1" "📋 インストール済み一覧 & チャット" \
+      "2" "⬇️  モデルをpull (選択式)" \
+      "3" "🔍 モデル名を直接指定してpull" \
+      "4" "🗑️  モデルを削除" \
       "B" "← 戻る"
     ) || return
 
     case "$choice" in
-      1) _model_list ;;
+      1) _model_list_and_test ;;
       2) _model_pull_select ;;
-      3) _model_pull_all ;;
-      4) _model_pull_custom ;;
-      5) _model_import_gguf ;;
-      6) _model_remove ;;
-      7) _model_test ;;
+      3) _model_pull_custom ;;
+      4) _model_remove ;;
       B) return ;;
     esac
   done
@@ -110,6 +104,27 @@ for line in sys.stdin:
 print(last)
 " 2>/dev/null || echo "error")
   [ "$last_status" = "success" ]
+}
+
+_model_list_and_test() {
+  local models
+  models=$(get_models 2>/dev/null)
+  if [ -z "$models" ]; then
+    ui_msg "モデル一覧" "インストール済みのモデルはありません\n\nModels → モデルをpull でダウンロードしてください"
+    return
+  fi
+
+  local items=()
+  while IFS= read -r m; do items+=("$m" ""); done <<< "$models"
+
+  local target
+  target=$(ui_menu "💬 モデルを選択 (一覧 & チャット)" "${items[@]}") || return
+
+  # 選んだらそのままチャット起動
+  clear
+  echo "── $target でチャット開始 (Ctrl+D or /bye で終了) ──"
+  bash "$SCRIPT_DIR/ollama-run.sh" "$target"
+  press_any_key
 }
 
 _model_list() {

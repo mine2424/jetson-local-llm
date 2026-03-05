@@ -7,186 +7,95 @@ source "$SCRIPT_DIR/lib/ui.sh"
 menu_setup() {
   while true; do
     local choice
-    choice=$(ui_menu "⚙️  セットアップメニュー" \
-      "1" "🧩 jetson-containers セットアップ (autotag Ollama)" \
-      "2" "📦 jetson-containers + モデルpull (まとめてセットアップ)" \
-      "3" "🧠 LFM-2.5 セットアップ (Ollama試行 → llama.cpp fallback)" \
-      "4" "🔨 llama.cpp ビルド単体 (CUDA sm_87)" \
-      "5" "⚡ GPU最適化 診断・適用 (09_optimize_perf.sh)" \
+    choice=$(ui_menu "⚙️  セットアップ" \
+      "1" "🚀 初回セットアップ  — jetson-containers + モデル pull" \
+      "2" "🔧 GPU 診断・修正    — コンテナ再作成・GPU 動作確認" \
+      "3" "🔨 llama.cpp ビルド  — CUDA sm_87 対応ビルド" \
       "B" "← 戻る"
     ) || return
 
     case "$choice" in
-      1) _setup_jetson_containers ;;
-      2) _setup_jc_with_model ;;
-      3) _setup_lfm ;;
-      4) _setup_llamacpp_only ;;
-      5) _setup_optimize_perf ;;
+      1) _setup_full ;;
+      2) _setup_fix_gpu ;;
+      3) _setup_llamacpp ;;
       B) return ;;
     esac
   done
 }
 
-_setup_jetson_containers() {
+# ─── 1. 初回セットアップ ─────────────────────────────────────────────────────
+_setup_full() {
+  # Step 1: jetson-containers + Ollama コンテナ
   clear
   bash "$SCRIPT_DIR/setup/08_setup_jetson_containers.sh"
   press_any_key
-}
 
-_setup_jc_with_model() {
-  # Step 1: jetson-containers セットアップ
-  clear
-  bash "$SCRIPT_DIR/setup/08_setup_jetson_containers.sh"
-  local rc=$?
-  press_any_key
-  [ $rc -ne 0 ] && return
-
-  # Ollama API が応答しているか確認
   if ! check_ollama; then
     ui_error "Ollama API が応答しません\njetson-containers のセットアップを確認してください"
     return
   fi
 
   # Step 2: モデル選択 & pull
-  # 3B以上は Q4_K_M 量子化必須。LFM-2.5 はバイナリアップグレード後に API pull。
   local items=(
-    "qwen2.5:3b-instruct-q4_K_M"              "[JA]  Qwen2.5 3B Q4        | 軽量日本語 ★         | 1.9GB" "ON"
-    "qwen2.5:7b-instruct-q4_K_M"              "[JA]  Qwen2.5 7B Q4        | 日本語最高性能       | 4.7GB" "OFF"
-    "qwen2.5-coder:3b-instruct-q4_K_M"        "[CODE] Qwen2.5-Coder 3B Q4 | コード生成軽量       | 1.9GB" "OFF"
-    "qwen3.5:0.8b"                             "[Q3.5] Qwen3.5 0.8B        | vision+tools・超軽量  | 1.0GB" "OFF"
-    "qwen3.5:2b-q4_K_M"                       "[Q3.5] Qwen3.5 2B Q4       | vision+tools・軽量    | 1.9GB" "OFF"
-    "qwen3.5:4b-q4_K_M"                       "[Q3.5] Qwen3.5 4B Q4       | vision+tools ★最推奨  | 3.4GB" "ON"
-    "gemma3:4b-it-q4_K_M"                     "[G3]  Gemma3 4B Q4         | バランス優秀         | ~2.6GB" "OFF"
-    "gemma3:1b-it-q5_K_M"                     "[G3]  Gemma3 1B Q5         | 超軽量               | ~0.8GB" "OFF"
-    "llama3.2:3b-instruct-q4_K_M"             "[META] Llama3.2 3B Q4      | 英語汎用             | 2.0GB" "OFF"
-    "deepseek-r1:1.5b-qwen-distill-q5_K_M"   "[R1] DeepSeek-R1 1.5B Q5   | 推論特化・軽量       | ~1.2GB" "OFF"
-    "mistral:7b-instruct-v0.3-q4_K_M"         "[MIS] Mistral 7B Q4        | 汎用・安定           | 4.1GB" "OFF"
-    "LFM-2.5"                                  "[LFM] LFM-2.5 Thinking Q4  | SSM省メモリ・125K ctx | 731MB" "OFF"
-    "LFM-2.5-JP"                               "[LFM] LFM-2.5 日本語        | 日本語特化SSM        | ~0.7GB" "OFF"
+    "qwen3.5:4b-q4_K_M"                      "★ Qwen3.5 4B  (vision+tools, 256K ctx)  3.4GB" "ON"
+    "qwen2.5:3b-instruct-q4_K_M"             "  Qwen2.5 3B  (日本語軽量)              1.9GB" "OFF"
+    "qwen2.5:7b-instruct-q4_K_M"             "  Qwen2.5 7B  (日本語最高品質)          4.7GB" "OFF"
+    "gemma3:4b-it-q4_K_M"                    "  Gemma3 4B   (バランス優秀)            2.6GB" "OFF"
+    "deepseek-r1:1.5b-qwen-distill-q5_K_M"   "  DeepSeek-R1 1.5B (推論特化・軽量)    1.2GB" "OFF"
+    "llama3.2:3b-instruct-q4_K_M"            "  Llama3.2 3B (英語汎用)               2.0GB" "OFF"
+    "LFM-2.5"                                "  LFM-2.5 Thinking (SSM・125K ctx)     731MB" "OFF"
   )
 
   local selected
-  selected=$(ui_checklist "ダウンロードするモデルを選択 (スペースで選択)" "${items[@]}") || return
+  selected=$(ui_checklist "ダウンロードするモデルを選択" "${items[@]}") || return
+  [ -z "$selected" ] && return
 
-  if [ -z "$selected" ]; then
-    ui_msg "情報" "モデルが選択されませんでした"
-    return
-  fi
-
-  # API pull モデルと LFM-2.5 を分離
   local failed=()
-  local lfm_requested=false
-  local lfm_jp_requested=false
-
   for model in $selected; do
     model=$(echo "$model" | tr -d '"')
-
     if [ "$model" = "LFM-2.5" ]; then
-      lfm_requested=true
+      clear
+      bash "$SCRIPT_DIR/setup/06_setup_lfm.sh"
+      press_any_key
       continue
     fi
-    if [ "$model" = "LFM-2.5-JP" ]; then
-      lfm_jp_requested=true
-      continue
-    fi
-
-    ui_info "pull中: $model\n\nOllama API 経由でダウンロード中..."
-    local logfile="/tmp/pull_setup_$$.log"
-    local last_status
-    last_status=$(curl -s -X POST http://localhost:11434/api/pull \
+    ui_info "pull 中: $model"
+    local status
+    status=$(curl -s -X POST http://localhost:11434/api/pull \
       -H "Content-Type: application/json" \
-      -d "{\"name\": \"$model\"}" \
-      2>&1 | tee "$logfile" | python3 -c "
+      -d "{\"name\": \"$model\"}" 2>/dev/null | \
+      python3 -c "
 import sys, json
 last = ''
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-        last = d.get('status', '')
-        if 'error' in d:
-            last = 'error: ' + d['error']
-    except:
-        pass
-print(last)" 2>/dev/null || echo "error")
-    rm -f "$logfile"
-    [ "$last_status" != "success" ] && failed+=("$model")
-  done
-
-  # LFM-2.5 (Thinking): バイナリアップグレード → API pull → GGUF フォールバック
-  if [ "$lfm_requested" = true ]; then
-    clear
-    bash "$SCRIPT_DIR/setup/06_setup_lfm.sh"
-    press_any_key
-  fi
-
-  # LFM-2.5 日本語: バイナリアップグレード済み前提でAPI pull
-  if [ "$lfm_jp_requested" = true ]; then
-    ui_info "LFM-2.5 日本語モデルをpull中...\n(nn-tsuzu/LFM2.5-1.2B-JP)"
-    local logfile="/tmp/pull_lfm_jp_$$.log"
-    local last_status
-    last_status=$(curl -s -X POST http://localhost:11434/api/pull \
-      -H "Content-Type: application/json" \
-      -d '{"name": "nn-tsuzu/LFM2.5-1.2B-JP"}' \
-      2>&1 | tee "$logfile" | python3 -c "
-import sys, json
-last = ''
-for line in sys.stdin:
-    line = line.strip()
-    if not line: continue
-    try:
-        d = json.loads(line)
-        last = d.get('status', '')
-        if 'error' in d: last = 'error: ' + d['error']
+for l in sys.stdin:
+    try: last = json.loads(l.strip()).get('status', last)
     except: pass
 print(last)" 2>/dev/null || echo "error")
-    rm -f "$logfile"
-    if [ "$last_status" != "success" ]; then
-      ui_error "LFM-2.5 日本語モデルのpullに失敗しました。\n先に LFM-2.5 (setup/06_setup_lfm.sh) を実行してバイナリを更新してください。"
-    fi
-  fi
-
-  # 最終結果
-  local installed
-  installed=$(curl -s http://localhost:11434/api/tags 2>/dev/null | \
-    python3 -c "import sys,json; [print(' •', m['name']) for m in json.load(sys.stdin).get('models',[])]" \
-    2>/dev/null || echo "  (取得失敗)")
+    [ "$status" != "success" ] && failed+=("$model")
+  done
 
   if [ ${#failed[@]} -eq 0 ]; then
-    ui_success "セットアップ完了！\n\nインストール済みモデル:\n$installed\n\n次のステップ:\n  ./ollama-run.sh qwen2.5:3b  # インタラクティブチャット\n  bash menu.sh → 3. Service   # サービス管理"
+    ui_success "セットアップ完了！\n\n次のステップ: Service → 起動 → チャット"
   else
-    ui_error "以下のモデルのダウンロードに失敗しました:\n${failed[*]}\n\nインストール済み:\n$installed"
+    ui_error "以下のモデルのダウンロードに失敗:\n${failed[*]}"
   fi
 }
 
-_setup_lfm() {
-  if ! check_ollama; then
-    ui_error "Ollama API が応答しません\nまず Ollama を起動してください\n(Service → Ollama 起動)"
-    return
-  fi
+# ─── 2. GPU 診断・修正 ────────────────────────────────────────────────────────
+_setup_fix_gpu() {
   clear
-  bash "$SCRIPT_DIR/setup/06_setup_lfm.sh"
+  bash "$SCRIPT_DIR/scripts/fix_ollama_gpu.sh"
   press_any_key
 }
 
-
-_setup_optimize_perf() {
-  clear
-  bash "$SCRIPT_DIR/setup/09_optimize_perf.sh"
-  press_any_key
-}
-
-_setup_llamacpp_only() {
+# ─── 3. llama.cpp ビルド ─────────────────────────────────────────────────────
+_setup_llamacpp() {
   if [ -f "$HOME/llama.cpp/build/bin/llama-server" ]; then
-    if ! ui_confirm "llama.cpp は既にビルド済みです。\n再ビルドしますか？\n(最新コミットに更新してからビルドします)"; then
-      return
-    fi
+    ui_confirm "llama.cpp は既にビルド済みです。再ビルドしますか？" || return
+  else
+    ui_confirm "llama.cpp を CUDA 対応でビルドします（初回 10〜20 分）。続けますか？" || return
   fi
-  ui_confirm "llama.cpp を CUDA対応でビルドします。\n初回は 10〜20 分かかります。続けますか？" || return
   clear
-  # nvcc が PATH にない場合に備えて CUDA bin を追加
   export PATH="/usr/local/cuda/bin:$PATH"
   bash "$SCRIPT_DIR/setup/05_setup_llamacpp.sh"
   press_any_key
