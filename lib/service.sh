@@ -58,7 +58,7 @@ _ollama_is_docker() {
 # GPU/CPU/ファン 最適化を暗黙適用 (全起動関数から呼ぶ)
 # - MAXN 電源モード (nvpmodel)
 # - クロック固定   (jetson_clocks)
-# - ファン積極冷却 (nvfancontrol 停止 → PWM 200/255)
+# - ファン積極冷却 (nvfancontrol 停止 → PWM 200/255, 全 hwmon パス対応)
 # - ページキャッシュ解放 (drop_caches)
 _apply_perf_mode() {
   local maxn_id
@@ -67,13 +67,26 @@ _apply_perf_mode() {
   sudo jetson_clocks     2>/dev/null || true
 
   # ファン: nvfancontrol (quiet) を止めて積極冷却
-  local fan_pwm
-  fan_pwm=$(ls /sys/devices/platform/pwm-fan/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
-  [ -z "$fan_pwm" ] && fan_pwm=$(ls /sys/class/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
-  if [ -n "$fan_pwm" ]; then
-    sudo systemctl stop nvfancontrol 2>/dev/null || true
-    sudo sh -c "echo 1 > ${fan_pwm}_enable" 2>/dev/null || true
-    sudo sh -c "echo 200 > $fan_pwm" 2>/dev/null || true
+  # Jetson モデルごとにパスが異なるため複数パスを試みる
+  sudo systemctl stop nvfancontrol 2>/dev/null || true
+  local _fan_set=false
+  for _fan_pwm in \
+    /sys/devices/platform/pwm-fan/hwmon/hwmon0/pwm1 \
+    /sys/devices/platform/pwm-fan/hwmon/hwmon1/pwm1 \
+    /sys/devices/platform/pwm-fan/hwmon/hwmon2/pwm1 \
+    /sys/devices/platform/pwm-fan.0/hwmon/hwmon0/pwm1 \
+    $(ls /sys/class/hwmon/hwmon*/pwm1 2>/dev/null); do
+    [ -f "$_fan_pwm" ] || continue
+    sudo sh -c "echo 1 > ${_fan_pwm}_enable" 2>/dev/null || true
+    sudo sh -c "echo 200 > $_fan_pwm" 2>/dev/null && _fan_set=true || true
+  done
+  # 上記で見つからない場合: find で網羅
+  if ! $_fan_set; then
+    while IFS= read -r _fan_pwm; do
+      [ -f "$_fan_pwm" ] || continue
+      sudo sh -c "echo 1 > ${_fan_pwm}_enable" 2>/dev/null || true
+      sudo sh -c "echo 200 > $_fan_pwm" 2>/dev/null && break || true
+    done < <(find /sys -name "pwm1" -type f 2>/dev/null | head -5)
   fi
 
   sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
