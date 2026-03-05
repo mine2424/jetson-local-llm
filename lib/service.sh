@@ -16,8 +16,11 @@ menu_service() {
     local lls_st="⏹️ 停止"
     curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok" && lls_st="✅ 稼働中"
 
+    local webui_st="⏹️ 停止"
+    sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^open-webui$" && webui_st="✅ 稼働中"
+
     local choice
-    choice=$(ui_menu "🚀 サービス管理  [Ollama: $ollama_st  |  llama-server: $lls_st]" \
+    choice=$(ui_menu "🚀 サービス管理  [Ollama: $ollama_st | llama-srv: $lls_st | WebUI: $webui_st]" \
       "1"  "📊 ステータス      — GPU・ファン・モデル確認" \
       "2"  "▶️  Ollama 起動     — GPU最適化 + ファン設定込み" \
       "3"  "⏹️  Ollama 停止" \
@@ -26,6 +29,8 @@ menu_service() {
       "6"  "⏹️  llama-server 停止" \
       "7"  "💬 チャット        — モデル選択 → 対話" \
       "8"  "📜 ログ表示" \
+      "9"  "🌐 Open WebUI 起動  — Ollama ブラウザUI (port 8080)" \
+      "10" "🌐 llama-server WebUI — ブラウザで開く (port 8081)" \
       "B"  "← 戻る"
     ) || return
 
@@ -38,6 +43,8 @@ menu_service() {
       6) _llamacpp_server_stop ;;
       7) _ollama_run_interactive ;;
       8) _service_logs ;;
+      9) _webui_start ;;
+      10) _llamacpp_webui_open ;;
       B) return ;;
     esac
   done
@@ -474,9 +481,13 @@ _llamacpp_server_start() {
     use_gpu=true
   fi
 
-  # GGUFファイルを広く検索 (LFM-2.5 専用ディレクトリに限らず)
+  # GGUFファイルを広く検索 (vocab/test ファイルを除外)
   local gguf_files
-  gguf_files=$(find "$HOME" -maxdepth 6 -name "*.gguf" 2>/dev/null | sort)
+  gguf_files=$(find "$HOME" -maxdepth 6 -name "*.gguf" \
+    ! -name "ggml-vocab-*" \
+    ! -path "*/llama.cpp/models/ggml-*" \
+    -size +100M \
+    2>/dev/null | sort)
   if [ -z "$gguf_files" ]; then
     ui_error "GGUF ファイルが見つかりません\n\n配置場所の例:\n  ~/.ollama/models/lfm25_gguf/\n  ~/models/\n\nOllama モデルを使う場合は Service → Ollama 起動 を使ってください"
     return
@@ -503,14 +514,21 @@ _llamacpp_server_start() {
   # パフォーマンス最適化を暗黙適用
   _apply_perf_mode
 
+  # LFM-2.5 等の大コンテキスト対応: ファイル名に "LFM" を含むなら 32K ctx
+  local ctx_size=4096
+  if [[ "$(basename "$target")" == *LFM* ]] || [[ "$(basename "$target")" == *lfm* ]]; then
+    ctx_size=32768
+  fi
+
   # 起動引数を組み立て (CPU/GPU 共通)
   local launch_args=(
     -m "$target"
-    -c 4096
+    -c "$ctx_size"
     -b 512 -ub 512
     -t 6
     --host 0.0.0.0
     --port "$LLAMACPP_SERVER_PORT"
+    --jinja
     --verbose
   )
 
@@ -522,7 +540,7 @@ _llamacpp_server_start() {
     export GGML_CUDA_FORCE_MMQ=1
     export GGML_CUDA_NO_PEER_COPY=1
     export CUDA_VISIBLE_DEVICES=0
-    launch_args+=(-ngl 999 --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+    launch_args+=(-ngl 999 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0)
   fi
 
   nohup "$LLAMACPP_BIN/llama-server" "${launch_args[@]}" \
@@ -616,6 +634,65 @@ except Exception as e:
   whiptail --title "$TITLE - LFM-2.5 応答 (port $LLAMACPP_SERVER_PORT)" \
     --scrolltext \
     --msgbox "$result" $HEIGHT $WIDTH
+}
+
+# ═══════════════════════════════════════════════════════════
+# Open WebUI (port 8080) — Ollama ブラウザUI
+# ═══════════════════════════════════════════════════════════
+
+_webui_start() {
+  # 既に稼働中か確認
+  if sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^open-webui$"; then
+    local lan_ip
+    lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    ui_msg "Open WebUI" "既に稼働中です\n\nアクセス URL:\n  http://localhost:8080\n  http://${lan_ip}:8080"
+    return
+  fi
+
+  # コンテナが存在するが停止中
+  if sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^open-webui$"; then
+    ui_info "Open WebUI コンテナを起動中..."
+    sudo docker start open-webui > /dev/null 2>&1
+  else
+    # コンテナが存在しない → pull して作成
+    ui_info "Open WebUI コンテナを作成中...\n(初回はイメージダウンロードに時間がかかります)"
+    sudo docker run -d \
+      --name open-webui \
+      --network=host \
+      --restart=unless-stopped \
+      -v open-webui:/app/backend/data \
+      -e OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+      ghcr.io/open-webui/open-webui:main
+  fi
+
+  # 起動待機
+  local i=0
+  while [ $i -lt 15 ]; do
+    if curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080" 2>/dev/null | grep -q "200\|302"; then
+      local lan_ip
+      lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+      ui_success "Open WebUI 起動完了！\n\nアクセス URL:\n  http://localhost:8080\n  http://${lan_ip}:8080\n\n※ Ollama が起動済みであることを確認してください"
+      return
+    fi
+    sleep 2
+    i=$((i + 1))
+  done
+  ui_error "Open WebUI の起動に失敗しました\n\nログ: sudo docker logs open-webui"
+}
+
+# ═══════════════════════════════════════════════════════════
+# llama-server WebUI (port 8081) — 組み込みブラウザUI
+# ═══════════════════════════════════════════════════════════
+
+_llamacpp_webui_open() {
+  if ! curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
+    ui_error "llama-server が起動していません\n\nまず項目 5 で llama-server を起動してください"
+    return
+  fi
+
+  local lan_ip
+  lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  ui_msg "llama-server WebUI" "llama-server は稼働中です\n\nブラウザでアクセスしてください:\n  http://localhost:${LLAMACPP_SERVER_PORT}\n  http://${lan_ip}:${LLAMACPP_SERVER_PORT}\n\n※ WebUI は llama-server に組み込まれています"
 }
 
 _llamacpp_logs() {

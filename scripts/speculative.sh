@@ -76,7 +76,7 @@ exec "$LLAMA_SERVER" \
   --draft         8 \
   -ngl            999 \
   -ngld           999 \
-  --flash-attn \
+  --flash-attn on \
   --cache-type-k  q8_0 \
   --cache-type-v  q8_0 \
   --ctx-size      4096 \

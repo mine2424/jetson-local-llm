@@ -228,7 +228,7 @@ if $USE_GPU; then
   export GGML_CUDA_FORCE_MMQ=1
   export GGML_CUDA_NO_PEER_COPY=1
   export CUDA_VISIBLE_DEVICES=0
-  ARGS+=(-ngl 999 --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+  ARGS+=(-ngl 999 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0)
 fi
 
 "$LLAMA_BIN" "${ARGS[@]}" 2>&1

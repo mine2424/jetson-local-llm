@@ -40,14 +40,18 @@ bash install.sh
 
 ### Service メニュー
 
-| 項目 | 内容 |
-|------|------|
-| ステータス | GPU使用率・VRAM・モデル一覧・電源モード確認 |
-| 起動 | Ollama Docker コンテナを GPU 最適化込みで起動 |
-| 停止 | Ollama を停止 |
-| 再起動 | GPU メモリを解放してから再起動 |
-| チャット | モデルを選んでそのまま対話 |
-| ログ | Ollama / llama-server のログを表示 |
+| # | 項目 | 内容 |
+|---|------|------|
+| 1 | ステータス | GPU使用率・VRAM・モデル一覧・電源モード確認 |
+| 2 | Ollama 起動 | Docker コンテナを GPU 最適化込みで起動 |
+| 3 | Ollama 停止 | Ollama を停止 |
+| 4 | Ollama 再起動 | GPU env 自動確認・上書きして再起動 |
+| 5 | llama-server 起動 | GGUF モデルを選択して起動 (port 8081) |
+| 6 | llama-server 停止 | llama-server を停止 |
+| 7 | チャット | モデルを選んでそのまま対話 |
+| 8 | ログ | Ollama / llama-server のログを表示 |
+| 9 | Open WebUI 起動 | Ollama ブラウザUI (port 8080) |
+| 10 | llama-server WebUI | llama-server 組み込み WebUI (port 8081) |
 
 ### Setup メニュー
 
@@ -69,8 +73,11 @@ Jetson Orin Nano Super
 │   ├── OLLAMA_NUM_GPU=999              ← 全レイヤー GPU オフロード
 │   └── OLLAMA_FLASH_ATTENTION=1
 │
+├── Open WebUI (Docker)                  ← Ollama ブラウザUI
+│   └── http://localhost:8080
+│
 └── llama-server (llama.cpp ネイティブ) ← GGUF モデル用 fallback
-    ├── API: http://localhost:8081 (OpenAI 互換)
+    ├── API + WebUI: http://localhost:8081 (OpenAI 互換)
     ├── GGML_CUDA_NO_VMM=1
     └── -ngl 999 --flash-attn
 ```

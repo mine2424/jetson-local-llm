@@ -111,7 +111,7 @@ if $USE_GPU; then
   export GGML_CUDA_FORCE_MMQ=1
   export GGML_CUDA_NO_PEER_COPY=1
   export CUDA_VISIBLE_DEVICES=0
-  LAUNCH_ARGS+=(-ngl "$N_GPU_LAYERS" --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+  LAUNCH_ARGS+=(-ngl "$N_GPU_LAYERS" --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0)
   echo "  CUDA env: GGML_CUDA_NO_VMM=1 GGML_CUDA_FORCE_MMQ=1"
 fi
 
