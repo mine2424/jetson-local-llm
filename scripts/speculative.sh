@@ -66,6 +66,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 export GGML_CUDA_FORCE_MMQ=1
+export GGML_CUDA_NO_VMM=1
 export GGML_CUDA_NO_PEER_COPY=1
 export CUDA_VISIBLE_DEVICES=0
 
@@ -85,5 +86,4 @@ exec "$LLAMA_SERVER" \
   --host          0.0.0.0 \
   --port          $PORT \
   --verbose \
-  --log-prefix \
   2>&1

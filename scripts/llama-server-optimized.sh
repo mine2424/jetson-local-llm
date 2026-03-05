@@ -100,17 +100,24 @@ LAUNCH_ARGS=(
   --ubatch-size "$UBATCH_SIZE"
   --threads "$N_THREADS"
   --parallel "$PARALLEL"
-  --verbose
-  --log-prefix
 )
 
 if $USE_GPU; then
-  # CUDA最適化環境変数
-  # FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
+  # ─── Jetson GPU 必須環境変数 ─────────────────────────────────────────────
+  # GGML_CUDA_NO_VMM=1  : Jetson は CUDA VMM 非対応。これなしで GPU 割り当て失敗
+  # GGML_CUDA_FORCE_MMQ : Q4_K_M 量子化で CUDA 行列演算を強制 (+10~30% speed)
+  # GGML_CUDA_NO_PEER_COPY=1 : Jetson 統合メモリ向け最適化
+  export GGML_CUDA_NO_VMM=1
   export GGML_CUDA_FORCE_MMQ=1
   export GGML_CUDA_NO_PEER_COPY=1
   export CUDA_VISIBLE_DEVICES=0
   LAUNCH_ARGS+=(-ngl "$N_GPU_LAYERS" --flash-attn --cache-type-k q8_0 --cache-type-v q8_0)
+  echo "  CUDA env: GGML_CUDA_NO_VMM=1 GGML_CUDA_FORCE_MMQ=1"
 fi
 
+# ログフラグのバージョン互換チェック
+# --log-prefix は古いビルドに存在しない場合がありクラッシュするため除外
+LAUNCH_ARGS+=(--verbose)
+
+echo ""
 exec "$LLAMA_SERVER" "${LAUNCH_ARGS[@]}" 2>&1

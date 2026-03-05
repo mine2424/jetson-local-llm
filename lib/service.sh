@@ -443,12 +443,13 @@ _llamacpp_server_start() {
     --host 0.0.0.0
     --port "$LLAMACPP_SERVER_PORT"
     --verbose
-    --log-prefix
   )
 
   if $use_gpu; then
-    # CUDA最適化環境変数
-    # FORCE_MMQ: Q4_K_M等の量子化モデルでCUDA行列乗算を強制 (+10~30% speed)
+    # ─── Jetson GPU 必須環境変数 ──────────────────────────────────────────
+    # GGML_CUDA_NO_VMM=1  : Jetson は CUDA VMM 非対応。これなしで GPU 割り当て失敗
+    # GGML_CUDA_FORCE_MMQ : Q4_K_M 量子化で CUDA 行列演算を強制 (+10~30% speed)
+    export GGML_CUDA_NO_VMM=1
     export GGML_CUDA_FORCE_MMQ=1
     export GGML_CUDA_NO_PEER_COPY=1
     export CUDA_VISIBLE_DEVICES=0
@@ -463,13 +464,34 @@ _llamacpp_server_start() {
   local i=0
   while [ $i -lt 20 ]; do
     if curl -s "http://localhost:$LLAMACPP_SERVER_PORT/health" 2>/dev/null | grep -q "ok"; then
-      ui_success "llama-server 起動完了！\n\nAPI: http://localhost:$LLAMACPP_SERVER_PORT\nモデル: $(basename "$target")\n\nOpenAI互換エンドポイント:\n  http://localhost:$LLAMACPP_SERVER_PORT/v1/chat/completions"
+      # ─── GPU 動作確認 ────────────────────────────────────────────────────
+      local gpu_info=""
+      if $use_gpu; then
+        # ログで CUDA 初期化を確認
+        local cuda_in_log="❓ 確認中"
+        if grep -qi "cuda\|ggml_cuda\|gpu layers" /tmp/llama-server.log 2>/dev/null; then
+          cuda_in_log="✅ CUDA ログあり"
+        elif grep -qi "CPU\|cpu only" /tmp/llama-server.log 2>/dev/null; then
+          cuda_in_log="⚠️  CPU ログ検出"
+        fi
+        # nvidia-smi で GPU メモリ確認
+        local gpu_mem
+        gpu_mem=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader 2>/dev/null | head -1 || echo "取得失敗")
+        gpu_info="\n\n🔍 GPU 確認:\n  ログ: $cuda_in_log\n  GPU メモリ: $gpu_mem\n\n⚠️  GPU 未使用の場合:\n  bash scripts/fix_ollama_gpu.sh"
+      fi
+      ui_success "llama-server 起動完了！\n\nAPI: http://localhost:$LLAMACPP_SERVER_PORT\nモデル: $(basename "$target")\nログ: /tmp/llama-server.log${gpu_info}"
       return
     fi
     sleep 1
     i=$((i + 1))
   done
-  ui_error "起動に失敗しました\nログ: /tmp/llama-server.log"
+
+  # 起動失敗 — ログを表示して原因特定
+  local fail_log=""
+  if [ -f /tmp/llama-server.log ]; then
+    fail_log="\n\nログ (最新10行):\n$(tail -10 /tmp/llama-server.log 2>/dev/null)"
+  fi
+  ui_error "起動に失敗しました${fail_log}\n\n確認: tail -f /tmp/llama-server.log"
 }
 
 _llamacpp_server_stop() {
