@@ -37,13 +37,26 @@ _setup_full() {
 
   # Step 2: モデル選択 & pull
   local items=(
-    "qwen3.5:4b-q4_K_M"                      "★ Qwen3.5 4B  (vision+tools, 256K ctx)  3.4GB" "ON"
-    "qwen2.5:3b-instruct-q4_K_M"             "  Qwen2.5 3B  (日本語軽量)              1.9GB" "OFF"
-    "qwen2.5:7b-instruct-q4_K_M"             "  Qwen2.5 7B  (日本語最高品質)          4.7GB" "OFF"
-    "gemma3:4b-it-q4_K_M"                    "  Gemma3 4B   (バランス優秀)            2.6GB" "OFF"
-    "deepseek-r1:1.5b-qwen-distill-q5_K_M"   "  DeepSeek-R1 1.5B (推論特化・軽量)    1.2GB" "OFF"
-    "llama3.2:3b-instruct-q4_K_M"            "  Llama3.2 3B (英語汎用)               2.0GB" "OFF"
-    "LFM-2.5"                                "  LFM-2.5 Thinking (SSM・125K ctx)     731MB" "OFF"
+    "qwen3.5:4b-q4_K_M"                             "★万能  Qwen3.5 4B    vision+tools+thinking  3.4GB" "ON"
+    "qwen2.5:7b-instruct-q4_K_M"                    "★日本語 Qwen2.5 7B   日本語最高品質          4.7GB" "OFF"
+    "qwen2.5:3b-instruct-q4_K_M"                    " 日本語 Qwen2.5 3B   日本語軽量              1.9GB" "OFF"
+    "deepseek-r1:1.5b-qwen-distill-q5_K_M"          " 推論  DeepSeek-R1 1.5B  CoT推論・軽量       1.2GB" "OFF"
+    "deepseek-r1:7b-qwen-distill-q4_K_M"            " 推論  DeepSeek-R1 7B   CoT推論・高性能      4.7GB" "OFF"
+    "qwen2.5-coder:7b-instruct-q4_K_M"              " コード Qwen2.5-Coder 7B コード最高性能      4.7GB" "OFF"
+    "qwen2.5-coder:3b-instruct-q4_K_M"              " コード Qwen2.5-Coder 3B コード軽量          1.9GB" "OFF"
+    "gemma3:4b-it-q4_K_M"                           " 汎用  Gemma3 4B    バランス優秀             2.6GB" "OFF"
+    "gemma2:2b-instruct-q5_K_M"                     " 汎用  Gemma2 2B    軽量・優秀               1.6GB" "OFF"
+    "phi3.5:3.8b-mini-instruct-q4_K_M"              " 推論  Phi3.5 3.8B  論理推論・MS製           2.2GB" "OFF"
+    "phi4-mini:3.8b-instruct-q4_K_M"                " 推論  Phi4-mini    Phi最新世代              2.4GB" "OFF"
+    "smollm2:1.7b-instruct-q5_K_M"                  " 超軽量 SmolLM2 1.7B 爆速・小さいが賢い      1.0GB" "OFF"
+    "smollm2:360m-instruct-q8_0"                    " 超軽量 SmolLM2 0.36B 最軽量                 0.4GB" "OFF"
+    "moondream2"                                     " ビジョン moondream2  画像理解・超軽量        1.7GB" "OFF"
+    "llava:7b-v1.6-mistral-q4_K_M"                  " ビジョン LLaVA 7B   画像+テキスト           4.5GB" "OFF"
+    "starcoder2:3b-q4_K_M"                          " コード StarCoder2 3B コード補完              1.9GB" "OFF"
+    "granite3.1-moe:3b-instruct-q4_K_M"             " 多言語 Granite3.1 MoE IBM製・効率的         2.1GB" "OFF"
+    "llama3.2:3b-instruct-q4_K_M"                   " 汎用  Llama3.2 3B  英語汎用                 2.0GB" "OFF"
+    "mistral:7b-instruct-v0.3-q4_K_M"               " 汎用  Mistral 7B   安定・汎用               4.1GB" "OFF"
+    "LFM-2.5"                                        " SSM   LFM-2.5      125K ctx・省メモリ       731MB" "OFF"
   )
 
   local selected

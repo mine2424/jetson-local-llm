@@ -1,138 +1,162 @@
 # モデル一覧
 
-> **前提**: 8GB共有メモリ / 実効使用可能 ~5.5GB
->
-> **量子化方針**:
-> - 3B以上は **Q4_K_M 必須**（品質・サイズのベストバランス）
-> - 1B台は **Q5_K_M 推奨**（小さいので品質を上げる余裕あり）
-> - lfm2.5-thinking は 1.2B だが Q4_K_M でも十分な品質
+> **メモリ上限**: 8GB 共有 RAM → モデルに使える実効値 ~5.2GB  
+> **量子化方針**: 3B以上 = Q4_K_M 必須 / 1B台 = Q5_K_M 推奨
 
 ---
 
-## 🔴 LFM-2.5（Liquid Foundation Model 2.5）
+## ⭐ 推奨モデル早見表
 
-SSM + Attention ハイブリッド。Jetson向けメリット:
-- メモリ効率が高い（Transformerより省RAM）
-- 125K コンテキスト対応
+| 用途 | モデル | サイズ | 特徴 |
+|------|--------|--------|------|
+| **万能メイン** | `qwen3.5:4b-q4_K_M` | 3.4GB | vision + tools + thinking, 256K ctx |
+| **日本語最高** | `qwen2.5:7b-instruct-q4_K_M` | 4.7GB | 日本語トップクラス |
+| **軽量バランス** | `qwen2.5:3b-instruct-q4_K_M` | 1.9GB | 日本語対応・高速 |
+| **推論特化** | `deepseek-r1:1.5b-qwen-distill-q5_K_M` | 1.2GB | CoT推論・軽量 |
+| **コード** | `qwen2.5-coder:7b-instruct-q4_K_M` | 4.7GB | コード最高性能 |
+| **超軽量** | `smollm2:1.7b-instruct-q5_K_M` | 1.0GB | 最小・爆速 |
+| **ビジョン** | `moondream2` | 1.7GB | 画像理解・超軽量 |
 
-| モデル名 | Ollama タグ | サイズ | コンテキスト | 備考 |
-|---------|-----------|-------|------------|------|
-| LFM-2.5 Thinking | `lfm2.5-thinking:1.2b-q4_K_M` | 731MB | 125K | **Ollama公式 ✅** |
-| LFM-2.5 Thinking (高品質) | `lfm2.5-thinking:1.2b-q8_0` | 1.2GB | 125K | Q8精度優先 |
-| LFM-2.5 日本語 | `nn-tsuzu/LFM2.5-1.2B-JP` | ~0.7GB | - | **日本語fine-tune ✅** |
-| LFM-2.5 Instruct | `nn-tsuzu/lfm2.5-1.2b-instruct` | ~0.7GB | - | コミュニティ版 |
+---
 
-> ⚠️ dustynv/ollama コンテナの Ollama バージョンが古い場合は pull が失敗する。
-> `bash setup/06_setup_lfm.sh` でバイナリを自動アップグレードして対応。
+## 🟦 Qwen3.5（最新世代 — 超推奨）
+
+vision + tools + thinking 全対応。256K ctx。Jetson 8GB で余裕動作。
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `qwen3.5:0.8b` | 0.6GB | 超軽量・vision対応 |
+| `qwen3.5:2b-q4_K_M` | 1.9GB | 軽量・バランス |
+| `qwen3.5:4b-q4_K_M` | 3.4GB | **★最推奨** 高性能・256K ctx |
+
+> `/no_think` プロンプトで thinking モードを無効化 → 高速化可能
 
 ---
 
 ## 🟠 Qwen2.5（日本語最強クラス）
 
-Alibaba製。現時点で日本語性能がトップクラス。
+Alibaba 製。現時点で日本語性能がトップクラス。
 
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 0.5B | `qwen2.5:0.5b-instruct-q5_K_M` | ~400MB | 超軽量テスト用 |
-| 1.5B | `qwen2.5:1.5b-instruct-q5_K_M` | ~1.1GB | 軽量日本語 |
-| 3B | `qwen2.5:3b-instruct-q4_K_M` | 1.9GB | **推奨: 軽量・高品質** |
-| 7B | `qwen2.5:7b-instruct-q4_K_M` | 4.7GB | **推奨: 日本語最高性能** |
-
----
-
-## 🟠 Qwen2.5-Coder（コード特化）
-
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 3B | `qwen2.5-coder:3b-instruct-q4_K_M` | 1.9GB | **推奨: コード軽量** |
-| 7B | `qwen2.5-coder:7b-instruct-q4_K_M` | 4.7GB | コード最高性能 |
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `qwen2.5:1.5b-instruct-q5_K_M` | 1.1GB | 超軽量日本語 |
+| `qwen2.5:3b-instruct-q4_K_M` | 1.9GB | **★推奨** 軽量日本語 |
+| `qwen2.5:7b-instruct-q4_K_M` | 4.7GB | **★推奨** 日本語最高品質 |
+| `qwen2.5-coder:3b-instruct-q4_K_M` | 1.9GB | コード軽量 |
+| `qwen2.5-coder:7b-instruct-q4_K_M` | 4.7GB | コード最高性能 |
 
 ---
 
-## 🌟 Qwen3.5（最新世代・2026年3月 — 超推奨）
+## 🔵 Microsoft Phi
 
-**vision + tools + thinking** 全対応。256K コンテキスト。Qwen3.5は画像入力も可能。
+小さいが賢い。Microsoftの軽量シリーズ。
 
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 0.8B | `qwen3.5:0.8b` | 1.0GB | 超軽量・vision対応 |
-| 2B | `qwen3.5:2b-q4_K_M` | 1.9GB | 軽量・バランス |
-| 4B | `qwen3.5:4b-q4_K_M` | 3.4GB | **★最強推奨: 高性能・256K ctx** |
-| 9B | `qwen3.5:9b` | 6.6GB | ⚠️ Jetson非推奨 (OOMリスク) |
-
-> ✅ **0.8b〜4b は 8GB Jetson で快適動作確認済み**
-> `/no_think` プロンプトで thinking mode を無効化して高速化可能
-
-## 🟡 Qwen3（旧世代・参考）
-
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 1.7B | `qwen3:1.7b-q5_K_M` | ~1.3GB | 推論機能付き軽量 |
-| 4B | `qwen3:4b-q4_K_M` | ~2.6GB | Qwen3.5が利用可能なら不要 |
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `phi3.5:3.8b-mini-instruct-q4_K_M` | 2.2GB | 論理推論・高品質 |
+| `phi4-mini:3.8b-instruct-q4_K_M` | 2.4GB | Phi最新世代 |
 
 ---
 
-## 🟢 Gemma 3（Google）
+## 🟢 Google Gemma
 
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 1B | `gemma3:1b-it-q5_K_M` | ~0.8GB | 超軽量・優秀 |
-| 4B | `gemma3:4b-it-q4_K_M` | ~2.6GB | **推奨: バランス優秀** |
-
----
-
-## 🔵 Llama 3.2（Meta）
-
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 1B | `llama3.2:1b-instruct-q5_K_M` | ~0.7GB | 超軽量 |
-| 3B | `llama3.2:3b-instruct-q4_K_M` | 2.0GB | 英語汎用 |
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `gemma2:2b-instruct-q5_K_M` | 1.6GB | Gemma2 軽量・優秀 |
+| `gemma3:1b-it-q5_K_M` | 0.8GB | 超軽量・最新世代 |
+| `gemma3:4b-it-q4_K_M` | 2.6GB | **★推奨** バランス優秀 |
 
 ---
 
-## 🟣 DeepSeek-R1（推論特化）
+## 🤖 Meta Llama
 
-Chain-of-thought推論に強い。
-
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 1.5B | `deepseek-r1:1.5b-qwen-distill-q5_K_M` | ~1.2GB | 推論軽量 |
-| 7B | `deepseek-r1:7b-qwen-distill-q4_K_M` | 4.7GB | 推論高性能 |
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `llama3.2:1b-instruct-q5_K_M` | 0.7GB | 超軽量 |
+| `llama3.2:3b-instruct-q4_K_M` | 2.0GB | 英語汎用 |
 
 ---
 
-## ⚪ Mistral（汎用）
+## 🧠 推論特化
 
-| サイズ | Ollama タグ | サイズ(disk) | 特徴 |
-|-------|-----------|------------|------|
-| 7B | `mistral:7b-instruct-v0.3-q4_K_M` | 4.1GB | 汎用・安定 |
+Chain-of-thought 推論に強い。
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `deepseek-r1:1.5b-qwen-distill-q5_K_M` | 1.2GB | **★推奨** 推論・軽量 |
+| `deepseek-r1:7b-qwen-distill-q4_K_M` | 4.7GB | 推論・高性能 |
+| `qwq:latest` | ※要確認 | QwQ 推論特化 |
+
+---
+
+## 👁️ ビジョン（画像理解）
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `moondream2` | 1.7GB | **★推奨** 超軽量ビジョン |
+| `qwen3.5:4b-q4_K_M` | 3.4GB | vision 内蔵・万能 |
+| `llava:7b-v1.6-mistral-q4_K_M` | 4.5GB | LLaVA 高性能 |
+
+---
+
+## 💻 コード特化
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `qwen2.5-coder:3b-instruct-q4_K_M` | 1.9GB | コード軽量 |
+| `qwen2.5-coder:7b-instruct-q4_K_M` | 4.7GB | コード最高性能 |
+| `starcoder2:3b-q4_K_M` | 1.9GB | StarCoder2・コード補完 |
+| `codellama:7b-instruct-q4_K_M` | 3.8GB | Meta コード特化 |
+
+---
+
+## 🔴 LFM-2.5（Liquid Foundation Model）
+
+SSM + Attention ハイブリッド。125K ctx・省メモリ。
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `lfm2.5-thinking:1.2b-q4_K_M` | 731MB | **Ollama公式** thinking対応 |
+| `lfm2.5-thinking:1.2b-q8_0` | 1.2GB | 高品質版 |
+| `nn-tsuzu/LFM2.5-1.2B-JP` | 0.7GB | **日本語 fine-tune** |
+
+> ⚠️ dustynv/ollama の古いバイナリでは pull 失敗する場合あり → `bash setup/06_setup_lfm.sh`
+
+---
+
+## ⚡ 超軽量 (<1.5GB)
+
+速度最優先・リソース節約。
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `smollm2:360m-instruct-q8_0` | 0.4GB | **最軽量** HuggingFace |
+| `smollm2:1.7b-instruct-q5_K_M` | 1.0GB | **★推奨** 小さいが賢い |
+| `qwen3.5:0.8b` | 0.6GB | vision対応 |
+| `llama3.2:1b-instruct-q5_K_M` | 0.7GB | Meta 超軽量 |
+| `gemma3:1b-it-q5_K_M` | 0.8GB | Google 超軽量 |
+
+---
+
+## 🌐 多言語・日本語特化
+
+| Ollama タグ | サイズ | 特徴 |
+|-----------|--------|------|
+| `qwen2.5:7b-instruct-q4_K_M` | 4.7GB | 日本語最高性能 |
+| `nn-tsuzu/LFM2.5-1.2B-JP` | 0.7GB | 日本語 fine-tune |
+| `granite3.1-moe:3b-instruct-q4_K_M` | 2.1GB | IBM MoE・多言語 |
 
 ---
 
 ## ❌ 8GB Jetson では動かないもの
 
 | モデル | サイズ | 理由 |
-|-------|--------|------|
-| qwen2.5:14b | 9.0GB | VRAM超過 |
-| phi4:14b | ~8.9GB | VRAM超過 |
-| llama3.1:8b-q4_K_M | ~5.2GB | MemFree不足でOOMリスク |
-
----
-
-## ⚠️ メモリ注意事項
-
-```
-8GB RAM の内訳（目安）:
-  OS + システム:   ~1.5GB
-  Ollama プロセス: ~0.3GB
-  GPU メモリ確保:  ~1.0GB (NvMap用 MemFree)
-  ─────────────────────────
-  モデルに使える:  ~5.2GB
-```
-
-- `ollama ps` でロード中モデルのVRAM使用量を確認
-- 複数モデルの同時ロードは禁止 (`OLLAMA_MAX_LOADED_MODELS=1` 設定済み)
-- OOM時は `sudo docker restart ollama` + `drop_caches` が有効
+|--------|--------|------|
+| `llama3.1:8b-q4_K_M` | 5.2GB | OOM リスク高 |
+| `qwen2.5:14b` | 9.0GB | VRAM超過 |
+| `gemma3:12b-it-q4_K_M` | 7.5GB | ギリギリ不可 |
+| `phi4:14b` | 8.9GB | VRAM超過 |
+| `deepseek-r1:14b` | 8.9GB | VRAM超過 |
 
 ---
 
@@ -140,6 +164,21 @@ Chain-of-thought推論に強い。
 
 > `./menu.sh → 4. Benchmark` または `bash benchmark/run_bench.sh` で計測
 
-| モデル | tokens/sec | eval_ms | 計測日 |
-|--------|-----------|---------|--------|
-| - | - | - | 未計測 |
+| モデル | tokens/sec | 計測日 | 備考 |
+|--------|-----------|--------|------|
+| - | - | 未計測 | - |
+
+---
+
+## メモリ使用量の目安
+
+```
+8GB RAM 内訳:
+  OS + システム:     ~1.5GB
+  Ollama プロセス:   ~0.3GB
+  GPU確保(NvMap):    ~1.0GB
+  ─────────────────────────
+  モデルに使える:    ~5.2GB
+
+安全に動くモデルサイズ: ~4.7GB 以下
+```

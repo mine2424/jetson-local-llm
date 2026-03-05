@@ -8,32 +8,46 @@ source "$SCRIPT_DIR/lib/ui.sh"
 # フォーマット: "カテゴリ | 説明 | サイズ"
 declare -A RECOMMENDED_MODELS
 RECOMMENDED_MODELS=(
-  # LFM-2.5 (要: setup/06_setup_lfm.sh でバイナリアップグレード済み)
-  ["lfm2.5-thinking:1.2b-q4_K_M"]="[LFM] LFM-2.5 Thinking Q4    | SSM省メモリ・125K ctx | 731MB"
-  ["lfm2.5-thinking:1.2b-q8_0"]="[LFM] LFM-2.5 Thinking Q8    | SSM高品質版           | 1.2GB"
-  ["nn-tsuzu/LFM2.5-1.2B-JP"]="[LFM] LFM-2.5 日本語fine-tune | 日本語特化SSM         | ~0.7GB"
-  # Qwen2.5 (日本語最強)
-  ["qwen2.5:1.5b-instruct-q5_K_M"]="[JA]  Qwen2.5 1.5B Q5         | 超軽量日本語          | ~1.1GB"
-  ["qwen2.5:3b-instruct-q4_K_M"]="[JA]  Qwen2.5 3B Q4            | 軽量日本語 ★推奨      | 1.9GB"
-  ["qwen2.5:7b-instruct-q4_K_M"]="[JA]  Qwen2.5 7B Q4            | 日本語最高性能 ★推奨  | 4.7GB"
-  # Qwen2.5-Coder
-  ["qwen2.5-coder:3b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 3B Q4  | コード軽量 ★推奨      | 1.9GB"
-  ["qwen2.5-coder:7b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 7B Q4  | コード高性能          | 4.7GB"
-  # Qwen3.5 (最新世代 2026年3月 vision+tools+thinking+256K ctx)
-  ["qwen3.5:0.8b"]="[Q3.5] Qwen3.5 0.8B             | vision・超軽量・256K   | 1.0GB"
-  ["qwen3.5:2b-q4_K_M"]="[Q3.5] Qwen3.5 2B Q4          | vision・軽量・256K    | 1.9GB"
-  ["qwen3.5:4b-q4_K_M"]="[Q3.5] Qwen3.5 4B Q4          | vision・高性能 ★最推奨 | 3.4GB"
-  # Gemma 3
-  ["gemma3:1b-it-q5_K_M"]="[G3]  Gemma3 1B Q5             | 超軽量・優秀          | ~0.8GB"
-  ["gemma3:4b-it-q4_K_M"]="[G3]  Gemma3 4B Q4             | バランス優秀 ★推奨    | ~2.6GB"
-  # Llama 3.2
-  ["llama3.2:1b-instruct-q5_K_M"]="[META] Llama3.2 1B Q5         | 超軽量                | ~0.7GB"
-  ["llama3.2:3b-instruct-q4_K_M"]="[META] Llama3.2 3B Q4         | 英語汎用              | 2.0GB"
-  # DeepSeek-R1 (推論特化)
-  ["deepseek-r1:1.5b-qwen-distill-q5_K_M"]="[R1] DeepSeek-R1 1.5B Q5    | 推論特化・軽量        | ~1.2GB"
-  ["deepseek-r1:7b-qwen-distill-q4_K_M"]="[R1] DeepSeek-R1 7B Q4      | 推論特化・高性能      | 4.7GB"
-  # Mistral
-  ["mistral:7b-instruct-v0.3-q4_K_M"]="[MIS] Mistral 7B Q4           | 汎用・安定            | 4.1GB"
+  # ── Qwen3.5 (最新・万能) ────────────────────────────────────────────────────
+  ["qwen3.5:0.8b"]="[Q3.5] Qwen3.5 0.8B         | vision+tools・超軽量   | 0.6GB"
+  ["qwen3.5:2b-q4_K_M"]="[Q3.5] Qwen3.5 2B Q4     | vision+tools・軽量     | 1.9GB"
+  ["qwen3.5:4b-q4_K_M"]="[Q3.5] Qwen3.5 4B Q4 ★  | vision+tools+thinking  | 3.4GB"
+  # ── Qwen2.5 (日本語) ────────────────────────────────────────────────────────
+  ["qwen2.5:1.5b-instruct-q5_K_M"]="[JA]  Qwen2.5 1.5B Q5      | 超軽量日本語           | 1.1GB"
+  ["qwen2.5:3b-instruct-q4_K_M"]="[JA]  Qwen2.5 3B Q4 ★      | 軽量日本語             | 1.9GB"
+  ["qwen2.5:7b-instruct-q4_K_M"]="[JA]  Qwen2.5 7B Q4 ★      | 日本語最高性能         | 4.7GB"
+  # ── Qwen2.5-Coder ────────────────────────────────────────────────────────────
+  ["qwen2.5-coder:3b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 3B   | コード軽量             | 1.9GB"
+  ["qwen2.5-coder:7b-instruct-q4_K_M"]="[CODE] Qwen2.5-Coder 7B   | コード高性能           | 4.7GB"
+  # ── Microsoft Phi ────────────────────────────────────────────────────────────
+  ["phi3.5:3.8b-mini-instruct-q4_K_M"]="[PHI]  Phi3.5 3.8B Q4     | 論理推論・高品質       | 2.2GB"
+  ["phi4-mini:3.8b-instruct-q4_K_M"]="[PHI]  Phi4-mini 3.8B Q4  | Phi最新世代            | 2.4GB"
+  # ── Google Gemma ────────────────────────────────────────────────────────────
+  ["gemma2:2b-instruct-q5_K_M"]="[G2]  Gemma2 2B Q5          | 軽量・優秀             | 1.6GB"
+  ["gemma3:1b-it-q5_K_M"]="[G3]  Gemma3 1B Q5          | 超軽量・最新           | 0.8GB"
+  ["gemma3:4b-it-q4_K_M"]="[G3]  Gemma3 4B Q4 ★       | バランス優秀           | 2.6GB"
+  # ── Meta Llama ──────────────────────────────────────────────────────────────
+  ["llama3.2:1b-instruct-q5_K_M"]="[META] Llama3.2 1B Q5      | 超軽量                 | 0.7GB"
+  ["llama3.2:3b-instruct-q4_K_M"]="[META] Llama3.2 3B Q4      | 英語汎用               | 2.0GB"
+  # ── DeepSeek-R1 (推論特化) ───────────────────────────────────────────────────
+  ["deepseek-r1:1.5b-qwen-distill-q5_K_M"]="[R1]  DeepSeek-R1 1.5B ★ | CoT推論・軽量         | 1.2GB"
+  ["deepseek-r1:7b-qwen-distill-q4_K_M"]="[R1]  DeepSeek-R1 7B     | CoT推論・高性能        | 4.7GB"
+  # ── 超軽量 (HuggingFace SmolLM2) ────────────────────────────────────────────
+  ["smollm2:360m-instruct-q8_0"]="[SML]  SmolLM2 0.36B Q8    | 最軽量・実験用         | 0.4GB"
+  ["smollm2:1.7b-instruct-q5_K_M"]="[SML]  SmolLM2 1.7B Q5 ★  | 超軽量・爆速           | 1.0GB"
+  # ── ビジョン ─────────────────────────────────────────────────────────────────
+  ["moondream2"]="[VIS]  moondream2 ★         | 超軽量ビジョン          | 1.7GB"
+  ["llava:7b-v1.6-mistral-q4_K_M"]="[VIS]  LLaVA 7B Q4         | 画像+テキスト          | 4.5GB"
+  # ── コード特化 ───────────────────────────────────────────────────────────────
+  ["starcoder2:3b-q4_K_M"]="[CODE] StarCoder2 3B Q4   | コード補完特化         | 1.9GB"
+  ["codellama:7b-instruct-q4_K_M"]="[CODE] CodeLlama 7B Q4   | Meta コード特化        | 3.8GB"
+  # ── 多言語・企業向け ─────────────────────────────────────────────────────────
+  ["granite3.1-moe:3b-instruct-q4_K_M"]="[IBM]  Granite3.1 MoE 3B  | IBM製・多言語・効率的  | 2.1GB"
+  ["mistral:7b-instruct-v0.3-q4_K_M"]="[MIS]  Mistral 7B Q4       | 汎用・安定             | 4.1GB"
+  # ── LFM-2.5 (SSM ハイブリッド) ──────────────────────────────────────────────
+  ["lfm2.5-thinking:1.2b-q4_K_M"]="[LFM]  LFM-2.5 Q4          | SSM・125K ctx          | 731MB"
+  ["lfm2.5-thinking:1.2b-q8_0"]="[LFM]  LFM-2.5 Q8          | SSM高品質版            | 1.2GB"
+  ["nn-tsuzu/LFM2.5-1.2B-JP"]="[LFM]  LFM-2.5 JP           | 日本語 fine-tune       | 0.7GB"
 )
 
 menu_models() {
