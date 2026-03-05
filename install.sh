@@ -178,20 +178,28 @@ fi
 info "起動時の自動パフォーマンス設定を登録中..."
 sudo tee /etc/systemd/system/jetson-perf.service > /dev/null <<'EOF'
 [Unit]
-Description=Jetson Max Performance Mode (MAXN + jetson_clocks)
-After=multi-user.target
+Description=Jetson Max Performance Mode (MAXN + jetson_clocks + fan cooling)
+After=multi-user.target nvfancontrol.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'nvpmodel -m 0 && jetson_clocks'
 RemainAfterExit=yes
+ExecStart=/bin/bash -c '\
+  MAXN_ID=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2 || echo 0); \
+  nvpmodel -m "${MAXN_ID:-0}"; \
+  jetson_clocks; \
+  systemctl stop nvfancontrol 2>/dev/null || true; \
+  FAN=$(ls /sys/devices/platform/pwm-fan/hwmon/hwmon*/pwm1 2>/dev/null | head -1); \
+  [ -z "$FAN" ] && FAN=$(ls /sys/class/hwmon/hwmon*/pwm1 2>/dev/null | head -1); \
+  [ -n "$FAN" ] && echo 1 > "${FAN}_enable" && echo 200 > "$FAN"; \
+  true'
 
 [Install]
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable jetson-perf.service > /dev/null 2>&1
-ok "jetson-perf.service 登録済み (boot 時に自動で MAXN + jetson_clocks)"
+ok "jetson-perf.service 登録済み (boot 時に MAXN + jetson_clocks + ファン冷却)"
 
 # ── ページキャッシュ解放 ──────────────────────────────────────────────────────
 info "ページキャッシュを解放中..."

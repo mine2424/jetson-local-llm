@@ -16,14 +16,30 @@ source "$SCRIPT_DIR/lib/bench.sh"
 
 check_whiptail
 
-# ─── 起動時 GPU 最適化を暗黙適用 ──────────────────────────────────────────────
-# menu.sh を起動するだけで MAXN 電源モード + クロック固定が有効になる
+# ─── 起動時 GPU / ファン 最適化を暗黙適用 ───────────────────────────────────────
+# menu.sh を起動するだけで以下が自動適用される:
+#   - MAXN 電源モード (nvpmodel)
+#   - GPU / CPU クロック固定 (jetson_clocks)
+#   - ファン積極冷却 (nvfancontrol 停止 → PWM 手動設定)
 _perf_init() {
+  # 電源モード MAXN
   local maxn_id
   maxn_id=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null \
     | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2 || echo "0")
   sudo nvpmodel -m "${maxn_id:-0}" 2>/dev/null || true
+
+  # クロック固定
   sudo jetson_clocks 2>/dev/null || true
+
+  # ファン: nvfancontrol (quiet) を止めて PWM を積極冷却に設定
+  local fan_pwm
+  fan_pwm=$(ls /sys/devices/platform/pwm-fan/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
+  [ -z "$fan_pwm" ] && fan_pwm=$(ls /sys/class/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
+  if [ -n "$fan_pwm" ]; then
+    sudo systemctl stop nvfancontrol 2>/dev/null || true
+    sudo sh -c "echo 1 > ${fan_pwm}_enable" 2>/dev/null || true
+    sudo sh -c "echo 200 > $fan_pwm" 2>/dev/null || true  # 78% — 積極冷却
+  fi
 }
 _perf_init
 

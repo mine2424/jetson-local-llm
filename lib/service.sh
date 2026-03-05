@@ -44,16 +44,27 @@ _ollama_is_docker() {
   sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"
 }
 
-# GPU/CPU 最適化を暗黙適用 (全起動関数から呼ぶ)
-# - MAXN 電源モード (nvpmodel -m 0)
+# GPU/CPU/ファン 最適化を暗黙適用 (全起動関数から呼ぶ)
+# - MAXN 電源モード (nvpmodel)
 # - クロック固定   (jetson_clocks)
+# - ファン積極冷却 (nvfancontrol 停止 → PWM 200/255)
 # - ページキャッシュ解放 (drop_caches)
 _apply_perf_mode() {
-  # MAXN モード ID をボード設定から取得 (Orin Nano Super は 0 番でない場合がある)
   local maxn_id
   maxn_id=$(grep -i "POWER_MODEL" /etc/nvpmodel.conf 2>/dev/null | grep -i "MAXN" | grep -o "ID=[0-9]*" | head -1 | cut -d= -f2)
   sudo nvpmodel -m "${maxn_id:-0}" 2>/dev/null || true
   sudo jetson_clocks     2>/dev/null || true
+
+  # ファン: nvfancontrol (quiet) を止めて積極冷却
+  local fan_pwm
+  fan_pwm=$(ls /sys/devices/platform/pwm-fan/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
+  [ -z "$fan_pwm" ] && fan_pwm=$(ls /sys/class/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
+  if [ -n "$fan_pwm" ]; then
+    sudo systemctl stop nvfancontrol 2>/dev/null || true
+    sudo sh -c "echo 1 > ${fan_pwm}_enable" 2>/dev/null || true
+    sudo sh -c "echo 200 > $fan_pwm" 2>/dev/null || true
+  fi
+
   sudo sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches' 2>/dev/null || true
 }
 
@@ -127,10 +138,27 @@ except: pass
     report+="\n=== Tegrastats ===\n$tstat\n"
   fi
 
+  # ── ファン ───────────────────────────────────────────────────────────────────
+  report+="\n"
+  local fan_pwm_path fan_pwm_val fan_pct
+  fan_pwm_path=$(ls /sys/devices/platform/pwm-fan/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
+  [ -z "$fan_pwm_path" ] && fan_pwm_path=$(ls /sys/class/hwmon/hwmon*/pwm1 2>/dev/null | head -1)
+  if [ -n "$fan_pwm_path" ] && [ -f "$fan_pwm_path" ]; then
+    fan_pwm_val=$(cat "$fan_pwm_path" 2>/dev/null || echo "?")
+    if [ "$fan_pwm_val" != "?" ]; then
+      fan_pct=$(( fan_pwm_val * 100 / 255 ))
+      if [ "$fan_pwm_val" -ge 180 ]; then
+        report+="ファン     : ✅ 積極冷却 ${fan_pwm_val}/255 (${fan_pct}%)\n"
+      else
+        report+="ファン     : ⚠️  低速 ${fan_pwm_val}/255 (${fan_pct}%) → Setup → GPU・ファン修正\n"
+      fi
+    fi
+  fi
+
   # ── 電源モード ───────────────────────────────────────────────────────────────
   local power_mode
   power_mode=$(sudo nvpmodel -q 2>/dev/null | grep "NV Power Mode" | awk '{print $NF}' || echo "?")
-  report+="\n電源モード: $power_mode"
+  report+="電源モード : $power_mode"
 
   whiptail --title "$TITLE - ステータス" \
     --scrolltext \

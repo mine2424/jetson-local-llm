@@ -8,15 +8,15 @@ menu_setup() {
   while true; do
     local choice
     choice=$(ui_menu "⚙️  セットアップ" \
-      "1" "🚀 初回セットアップ  — jetson-containers + モデル pull" \
-      "2" "🔧 GPU 診断・修正    — コンテナ再作成・GPU 動作確認" \
-      "3" "🔨 llama.cpp ビルド  — CUDA sm_87 対応ビルド" \
+      "1" "🚀 初回セットアップ    — jetson-containers + モデル pull" \
+      "2" "🔧 GPU・ファン 診断・修正 — GPU env修正・冷却設定" \
+      "3" "🔨 llama.cpp ビルド    — CUDA sm_87 対応ビルド" \
       "B" "← 戻る"
     ) || return
 
     case "$choice" in
       1) _setup_full ;;
-      2) _setup_fix_gpu ;;
+      2) _setup_fix_gpu_fan ;;
       3) _setup_llamacpp ;;
       B) return ;;
     esac
@@ -94,10 +94,22 @@ print(last)" 2>/dev/null || echo "error")
   fi
 }
 
-# ─── 2. GPU 診断・修正 ────────────────────────────────────────────────────────
-_setup_fix_gpu() {
+# ─── 2. GPU・ファン 診断・修正 ──────────────────────────────────────────────────
+_setup_fix_gpu_fan() {
+  # GPU 修正
   clear
-  bash "$SCRIPT_DIR/scripts/fix_ollama_gpu.sh"
+  echo "═══════════════════════════════════════════"
+  echo "  [1/2] GPU 環境変数 修正・確認"
+  echo "═══════════════════════════════════════════"
+  bash "$SCRIPT_DIR/scripts/fix_ollama_gpu.sh" --force
+  press_any_key
+
+  # ファン冷却設定
+  clear
+  echo "═══════════════════════════════════════════"
+  echo "  [2/2] ファン積極冷却 設定"
+  echo "═══════════════════════════════════════════"
+  bash "$SCRIPT_DIR/setup/10_setup_fan.sh"
   press_any_key
 }
 
