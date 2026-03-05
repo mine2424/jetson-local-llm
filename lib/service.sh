@@ -18,13 +18,15 @@ menu_service() {
 
     local choice
     choice=$(ui_menu "🚀 サービス管理  [Ollama: $ollama_st  |  llama-server: $lls_st]" \
-      "1" "📊 ステータス    — GPU使用率・モデル・メモリ" \
-      "2" "▶️  起動          — Ollama (GPU最適化込み)" \
-      "3" "⏹️  停止" \
-      "4" "🔄 再起動" \
-      "5" "💬 チャット      — モデル選択 → 対話" \
-      "6" "📜 ログ表示" \
-      "B" "← 戻る"
+      "1"  "📊 ステータス      — GPU・ファン・モデル確認" \
+      "2"  "▶️  Ollama 起動     — GPU最適化 + ファン設定込み" \
+      "3"  "⏹️  Ollama 停止" \
+      "4"  "🔄 Ollama 再起動   — GPU env 自動確認・上書き" \
+      "5"  "▶️  llama-server 起動 — GGUF モデル (port $LLAMACPP_SERVER_PORT)" \
+      "6"  "⏹️  llama-server 停止" \
+      "7"  "💬 チャット        — モデル選択 → 対話" \
+      "8"  "📜 ログ表示" \
+      "B"  "← 戻る"
     ) || return
 
     case "$choice" in
@@ -32,8 +34,10 @@ menu_service() {
       2) _ollama_start ;;
       3) _ollama_stop ;;
       4) _ollama_restart ;;
-      5) _ollama_run_interactive ;;
-      6) _service_logs ;;
+      5) _llamacpp_server_start ;;
+      6) _llamacpp_server_stop ;;
+      7) _ollama_run_interactive ;;
+      8) _service_logs ;;
       B) return ;;
     esac
   done
@@ -187,21 +191,31 @@ _ollama_start() {
   fi
 
   if ! _ollama_is_docker; then
-    ui_error "Ollama コンテナが見つかりません\n\nまず Setup → jetson-containers セットアップを実行してください"
+    ui_error "Ollama コンテナが見つかりません\n\nまず Setup → 初回セットアップを実行してください"
     return
   fi
 
-  ui_info "Ollama (Docker) を起動中...\nMAXN 電源モード + クロック固定 + メモリ解放を適用します"
-  _apply_perf_mode
-  sudo docker start ollama > /dev/null 2>&1
+  # GPU env チェック: 未設定なら自動修正してから起動
+  local container_env
+  container_env=$(sudo docker inspect ollama --format '{{range .Config.Env}}{{.}} {{end}}' 2>/dev/null || true)
+
+  _apply_perf_mode  # MAXN + jetson_clocks + ファン + drop_caches
+
+  if echo "$container_env" | grep -q "GGML_CUDA_NO_VMM=1"; then
+    ui_info "Ollama を起動中...\nGPU env: ✅ 設定済み\nMAXN + ファン最適化 適用済み"
+    sudo docker start ollama > /dev/null 2>&1
+  else
+    ui_info "⚠️  GPU env 未設定を検出\nGPU 最適化設定でコンテナを再作成してから起動します..."
+    bash "$SCRIPT_DIR/scripts/fix_ollama_gpu.sh" --force 2>&1 | tail -5
+  fi
 
   local i=0
-  while [ $i -lt 10 ]; do
+  while [ $i -lt 12 ]; do
     if check_ollama; then
-      ui_success "Ollama が起動しました！\nAPI: http://localhost:11434"
+      ui_success "Ollama 起動完了！\nAPI: http://localhost:11434\n\n✅ GGML_CUDA_NO_VMM=1\n✅ MAXN 電源モード\n✅ ファン積極冷却"
       return
     fi
-    sleep 3
+    sleep 2
     i=$((i + 1))
   done
   ui_error "起動に失敗しました\nログ: sudo docker logs ollama"
@@ -239,23 +253,46 @@ except:
 }
 
 _ollama_restart() {
-  ui_info "Ollamaを再起動中...\nMAXN 電源モード + クロック固定 + メモリ解放を適用します"
-  if _ollama_is_docker; then
-    sudo docker stop ollama > /dev/null 2>/dev/null || true
-    sleep 1
-    _apply_perf_mode
-    sudo docker start ollama > /dev/null 2>&1
-    sleep 3
-  else
-    ui_error "Ollama コンテナが見つかりません\nSetup → jetson-containers セットアップを実行してください"
+  if ! _ollama_is_docker; then
+    ui_error "Ollama コンテナが見つかりません\nSetup → 初回セットアップを実行してください"
     return
   fi
 
-  if check_ollama; then
-    ui_success "Ollama が再起動しました"
+  # GPU env 自動チェック: GGML_CUDA_NO_VMM=1 が未設定なら自動修正
+  local container_env
+  container_env=$(sudo docker inspect ollama --format '{{range .Config.Env}}{{.}} {{end}}' 2>/dev/null || true)
+
+  if echo "$container_env" | grep -q "GGML_CUDA_NO_VMM=1"; then
+    # GPU env 設定済み → 通常再起動
+    ui_info "Ollama を再起動中...\nGPU env: ✅ 設定済み\nMAXN + jetson_clocks + ファン + drop_caches を適用"
+    sudo docker stop ollama > /dev/null 2>&1 || true
+    sleep 1
+    _apply_perf_mode
+    sudo docker start ollama > /dev/null 2>&1
   else
-    ui_error "再起動に失敗しました\nログ: sudo docker logs ollama"
+    # GPU env 未設定 → コンテナを GPU env 付きで再作成してから起動
+    ui_info "⚠️  GPU env (GGML_CUDA_NO_VMM=1) が未設定です\nコンテナを GPU 最適化設定で再作成してから起動します..."
+    _apply_perf_mode
+    bash "$SCRIPT_DIR/scripts/fix_ollama_gpu.sh" --force 2>&1 | tail -5
+    # fix_ollama_gpu.sh がコンテナを起動するので、ここでは待機のみ
   fi
+
+  sleep 3
+  local i=0
+  while [ $i -lt 10 ]; do
+    if check_ollama; then
+      # GPU env 最終確認
+      local env_check
+      env_check=$(sudo docker inspect ollama --format '{{range .Config.Env}}{{.}} {{end}}' 2>/dev/null || true)
+      local gpu_msg=""
+      echo "$env_check" | grep -q "GGML_CUDA_NO_VMM=1" && gpu_msg="\n✅ GGML_CUDA_NO_VMM=1 確認済み"
+      ui_success "Ollama 再起動完了！${gpu_msg}"
+      return
+    fi
+    sleep 2
+    i=$((i + 1))
+  done
+  ui_error "再起動に失敗しました\nログ: sudo docker logs ollama"
 }
 
 _ollama_logs() {
@@ -427,7 +464,7 @@ _llamacpp_server_start() {
   fi
 
   if [ ! -f "$LLAMACPP_BIN/llama-server" ]; then
-    ui_error "llama.cpp がビルドされていません\n\nSetup → LFM-2.5 セットアップ を実行してください"
+    ui_error "llama.cpp がビルドされていません\n\nSetup → llama.cpp ビルド を実行してください"
     return
   fi
 
@@ -437,26 +474,26 @@ _llamacpp_server_start() {
     use_gpu=true
   fi
 
-  # GGUFファイルを選択
+  # GGUFファイルを広く検索 (LFM-2.5 専用ディレクトリに限らず)
   local gguf_files
-  gguf_files=$(ls "$GGUF_DIR"/*.gguf 2>/dev/null)
+  gguf_files=$(find "$HOME" -maxdepth 6 -name "*.gguf" 2>/dev/null | sort)
   if [ -z "$gguf_files" ]; then
-    ui_error "GGUFファイルが見つかりません: $GGUF_DIR\n\nSetup → LFM-2.5 セットアップ を実行してください"
+    ui_error "GGUF ファイルが見つかりません\n\n配置場所の例:\n  ~/.ollama/models/lfm25_gguf/\n  ~/models/\n\nOllama モデルを使う場合は Service → Ollama 起動 を使ってください"
     return
   fi
 
   local items=()
   while IFS= read -r f; do
-    items+=("$f" "$(basename "$f")")
+    items+=("$f" "$(du -sh "$f" 2>/dev/null | cut -f1) — $(basename "$f")")
   done <<< "$gguf_files"
 
   local target
   target=$(ui_menu "起動するモデル (GGUF) を選択" "${items[@]}") || return
 
   if $use_gpu; then
-    ui_info "llama-server を起動中...\nGPU モード: MAXN + jetson_clocks + -ngl 999 + Flash Attention\nport: $LLAMACPP_SERVER_PORT"
+    ui_info "llama-server を起動中... (GPU モード)\n\n✅ GGML_CUDA_NO_VMM=1   (Jetson統合メモリ)\n✅ -ngl 999              (全レイヤーGPU)\n✅ --flash-attn          (Flash Attention)\n✅ GGML_CUDA_FORCE_MMQ  (量子化最適化)\n✅ MAXN + ファン冷却\n\nport: $LLAMACPP_SERVER_PORT"
   else
-    ui_info "llama-server を起動中...\nCPU モード: -ngl 0 (GPU なし) — ~7 t/s\nGPU ビルドは: Setup → 4. llama.cpp ビルド単体\nport: $LLAMACPP_SERVER_PORT"
+    ui_info "llama-server を起動中... (CPU モード)\n\nlibggml-cuda.so が見つかりません → CPU 推論 (~7 t/s)\nGPU ビルドは: Setup → llama.cpp ビルド\n\nport: $LLAMACPP_SERVER_PORT"
   fi
 
   # 既存プロセスを停止
