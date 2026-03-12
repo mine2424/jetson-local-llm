@@ -11,6 +11,8 @@ menu_setup() {
       "1" "🚀 初回セットアップ    — jetson-containers + モデル pull" \
       "2" "🔧 GPU・ファン 診断・修正 — GPU env修正・冷却設定" \
       "3" "🔨 llama.cpp ビルド    — CUDA sm_87 対応ビルド" \
+      "4" "🔄 Ollama 更新         — コンテナ内バイナリを最新版に" \
+      "5" "📦 Qwen3.5 GGUF       — llama.cpp 用モデルDL" \
       "B" "← 戻る"
     ) || return
 
@@ -18,6 +20,8 @@ menu_setup() {
       1) _setup_full ;;
       2) _setup_fix_gpu_fan ;;
       3) _setup_llamacpp ;;
+      4) _setup_update_ollama ;;
+      5) _setup_qwen35_gguf ;;
       B) return ;;
     esac
   done
@@ -38,6 +42,8 @@ _setup_full() {
   # Step 2: モデル選択 & pull
   local items=(
     "qwen3.5:4b-q4_K_M"                             "★万能  Qwen3.5 4B    vision+tools+thinking  3.4GB" "ON"
+    "qwen3.5:2b-q8_0"                                 " dev   Qwen3.5 2B Q8 dev高品質・高速           2.7GB" "OFF"
+    "qwen3.5:4b-q8_0"                                  " dev   Qwen3.5 4B Q8 dev最高品質              5.3GB" "OFF"
     "qwen2.5:7b-instruct-q4_K_M"                    "★日本語 Qwen2.5 7B   日本語最高品質          4.7GB" "OFF"
     "qwen2.5:3b-instruct-q4_K_M"                    " 日本語 Qwen2.5 3B   日本語軽量              1.9GB" "OFF"
     "deepseek-r1:1.5b-qwen-distill-q5_K_M"          " 推論  DeepSeek-R1 1.5B  CoT推論・軽量       1.2GB" "OFF"
@@ -110,6 +116,23 @@ _setup_fix_gpu_fan() {
   echo "  [2/2] ファン積極冷却 設定"
   echo "═══════════════════════════════════════════"
   bash "$SCRIPT_DIR/setup/10_setup_fan.sh"
+  press_any_key
+}
+
+# ─── 5. Qwen3.5 GGUF ダウンロード ────────────────────────────────────────────
+_setup_qwen35_gguf() {
+  clear
+  bash "$SCRIPT_DIR/setup/12_setup_qwen35_gguf.sh"
+  press_any_key
+}
+
+# ─── 4. Ollama 更新 ──────────────────────────────────────────────────────────
+_setup_update_ollama() {
+  local current_ver
+  current_ver=$(curl -s http://localhost:11434/api/version 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','不明'))" 2>/dev/null || echo "不明")
+  ui_confirm "Ollama バイナリを更新します。\n\n現在: v${current_ver}\n\nコンテナ内のバイナリを最新版に差し替えます。\n続けますか？" || return
+  clear
+  bash "$SCRIPT_DIR/setup/11_update_ollama.sh"
   press_any_key
 }
 

@@ -502,7 +502,7 @@ _llamacpp_server_start() {
     -size +100M \
     2>/dev/null | sort)
   if [ -z "$gguf_files" ]; then
-    ui_error "GGUF ファイルが見つかりません\n\n配置場所の例:\n  ~/.ollama/models/lfm25_gguf/\n  ~/models/\n\nOllama モデルを使う場合は Service → Ollama 起動 を使ってください"
+    ui_error "GGUF ファイルが見つかりません\n\n配置場所の例:\n  ~/.ollama/models/qwen35_gguf/\n  ~/.ollama/models/lfm25_gguf/\n  ~/models/\n\nSetup → Qwen3.5 GGUF でダウンロード可能\nOllama モデルは Service → Ollama 起動 を使ってください"
     return
   fi
 
@@ -527,10 +527,14 @@ _llamacpp_server_start() {
   # パフォーマンス最適化を暗黙適用
   _apply_perf_mode
 
-  # LFM-2.5 等の大コンテキスト対応: ファイル名に "LFM" を含むなら 32K ctx
+  # コンテキストサイズ自動判定
   local ctx_size=4096
-  if [[ "$(basename "$target")" == *LFM* ]] || [[ "$(basename "$target")" == *lfm* ]]; then
-    ctx_size=32768
+  local bname
+  bname="$(basename "$target")"
+  if [[ "$bname" == *LFM* ]] || [[ "$bname" == *lfm* ]]; then
+    ctx_size=32768    # LFM-2.5: 125K 対応だが Jetson では 32K
+  elif [[ "$bname" == *Qwen3.5* ]] || [[ "$bname" == *qwen3.5* ]]; then
+    ctx_size=8192     # Qwen3.5: 256K 対応だが Jetson メモリ節約で 8K
   fi
 
   # 起動引数を組み立て (CPU/GPU 共通)

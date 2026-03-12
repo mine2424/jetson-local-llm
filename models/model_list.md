@@ -28,6 +28,8 @@ vision + tools + thinking 全対応。256K ctx。Jetson 8GB で余裕動作。
 | `qwen3.5:0.8b` | 0.6GB | 超軽量・vision対応 |
 | `qwen3.5:2b-q4_K_M` | 1.9GB | 軽量・バランス |
 | `qwen3.5:4b-q4_K_M` | 3.4GB | **★最推奨** 高性能・256K ctx |
+| `qwen3.5:2b-q8_0` | 2.7GB | dev高品質・高速 |
+| `qwen3.5:4b-q8_0` | 5.3GB | **dev最高品質** 256K ctx ⚠️ borderline |
 
 > `/no_think` プロンプトで thinking モードを無効化 → 高速化可能
 
@@ -145,6 +147,35 @@ SSM + Attention ハイブリッド。125K ctx・省メモリ。
 | `qwen2.5:7b-instruct-q4_K_M` | 4.7GB | 日本語最高性能 |
 | `nn-tsuzu/LFM2.5-1.2B-JP` | 0.7GB | 日本語 fine-tune |
 | `granite3.1-moe:3b-instruct-q4_K_M` | 2.1GB | IBM MoE・多言語 |
+
+---
+
+## 🔧 llama.cpp 用 GGUF モデル
+
+llama-server で直接使用する GGUF ファイル。`Setup → Qwen3.5 GGUF` でダウンロード可能。
+
+### Qwen3.5 GGUF
+
+| ファイル名 | サイズ | HF リポ | 特徴 |
+|-----------|--------|---------|------|
+| `Qwen3.5-0.8B-Q4_K_M.gguf` | 0.6GB | unsloth/Qwen3.5-0.8B-GGUF | 超軽量 |
+| `Qwen3.5-0.8B-Q8_0.gguf` | 0.9GB | unsloth/Qwen3.5-0.8B-GGUF | 超軽量・高品質 |
+| `Qwen3.5-2B-Q4_K_M.gguf` | 1.3GB | unsloth/Qwen3.5-2B-GGUF | 軽量・高速 |
+| `Qwen3.5-2B-Q8_0.gguf` | 2.0GB | unsloth/Qwen3.5-2B-GGUF | **★推奨** dev高品質 |
+| `Qwen3.5-4B-Q4_K_M.gguf` | 2.9GB | bartowski/Qwen_Qwen3.5-4B-GGUF | **★推奨** バランス |
+| `Qwen3.5-4B-Q8_0.gguf` | 4.5GB | bartowski/Qwen_Qwen3.5-4B-GGUF | 最高品質 ⚠️ borderline |
+
+> Qwen3.5 は vision + tools + thinking + agentic coding 対応。コーディング用途にも実用的。
+> 保存先: `~/.ollama/models/qwen35_gguf/`
+
+### Qwen3-Coder について
+
+| モデル | Q4 サイズ | 状況 |
+|--------|----------|------|
+| Qwen3-Coder 30B-A3B | 19GB | ❌ Jetson 8GB 不可 |
+| Qwen3-Coder-Next 80B-A3B | 48GB | ❌ Jetson 8GB 不可 |
+
+> Qwen3-Coder は最小でも 19GB。Jetson 8GB では Qwen3.5 (coding対応) を代替利用。
 
 ---
 

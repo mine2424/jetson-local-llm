@@ -12,6 +12,8 @@ RECOMMENDED_MODELS=(
   ["qwen3.5:0.8b"]="[Q3.5] Qwen3.5 0.8B         | vision+tools・超軽量   | 0.6GB"
   ["qwen3.5:2b-q4_K_M"]="[Q3.5] Qwen3.5 2B Q4     | vision+tools・軽量     | 1.9GB"
   ["qwen3.5:4b-q4_K_M"]="[Q3.5] Qwen3.5 4B Q4 ★  | vision+tools+thinking  | 3.4GB"
+  ["qwen3.5:2b-q8_0"]="[Q3.5] Qwen3.5 2B Q8       | dev高品質・高速        | 2.7GB"
+  ["qwen3.5:4b-q8_0"]="[Q3.5] Qwen3.5 4B Q8       | dev最高品質・256K ctx   | 5.3GB"
   # ── Qwen2.5 (日本語) ────────────────────────────────────────────────────────
   ["qwen2.5:1.5b-instruct-q5_K_M"]="[JA]  Qwen2.5 1.5B Q5      | 超軽量日本語           | 1.1GB"
   ["qwen2.5:3b-instruct-q4_K_M"]="[JA]  Qwen2.5 3B Q4 ★      | 軽量日本語             | 1.9GB"
