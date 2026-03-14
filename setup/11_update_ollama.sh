@@ -27,9 +27,9 @@ echo ""
 
 # ─── [1/6] 前提確認 ──────────────────────────────────────────────────────────
 echo "── [1/6] 前提確認 ──"
-if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if ! sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   err "コンテナ '${CONTAINER_NAME}' が起動していません"
-  err "先に起動してください: docker start ${CONTAINER_NAME}"
+  err "先に起動してください: sudo docker start ${CONTAINER_NAME}"
   exit 1
 fi
 
@@ -39,7 +39,7 @@ if ! command -v zstd &>/dev/null; then
 fi
 ok "zstd: インストール済み"
 
-CURRENT_VER=$(docker exec "$CONTAINER_NAME" ollama --version 2>/dev/null | awk '{print $NF}')
+CURRENT_VER=$(sudo docker exec "$CONTAINER_NAME" ollama --version 2>/dev/null | awk '{print $NF}')
 ok "現在のバージョン: ${CURRENT_VER:-不明}"
 
 # ─── [2/6] 最新バージョン取得 ────────────────────────────────────────────────
@@ -113,17 +113,17 @@ echo ""
 echo "── [5/6] コンテナ内にコピー ──"
 
 # 既存バイナリをバックアップ
-docker exec "$CONTAINER_NAME" cp /usr/local/bin/ollama /usr/local/bin/ollama.bak 2>/dev/null || true
+sudo docker exec "$CONTAINER_NAME" cp /usr/local/bin/ollama /usr/local/bin/ollama.bak 2>/dev/null || true
 
 # メインバイナリをコピー
-docker cp "$OLLAMA_BIN" "${CONTAINER_NAME}:/usr/local/bin/ollama"
+sudo docker cp "$OLLAMA_BIN" "${CONTAINER_NAME}:/usr/local/bin/ollama"
 ok "ollama バイナリをコピー完了"
 
 # lib/ ディレクトリをコピー (ランナー + CUDA ライブラリ)
 if [ -d "${INSTALL_DIR}/lib" ]; then
   info "ライブラリをコピー中..."
-  docker exec "$CONTAINER_NAME" mkdir -p /usr/local/lib 2>/dev/null || true
-  docker cp "${INSTALL_DIR}/lib/." "${CONTAINER_NAME}:/usr/local/lib/" 2>/dev/null || true
+  sudo docker exec "$CONTAINER_NAME" mkdir -p /usr/local/lib 2>/dev/null || true
+  sudo docker cp "${INSTALL_DIR}/lib/." "${CONTAINER_NAME}:/usr/local/lib/" 2>/dev/null || true
   ok "ライブラリをコピー完了"
 fi
 
@@ -133,7 +133,7 @@ rm -rf "$TMPDIR"
 echo ""
 echo "── [6/6] Ollama サーバ再起動 ──"
 
-docker restart "$CONTAINER_NAME"
+sudo docker restart "$CONTAINER_NAME"
 info "コンテナ再起動中..."
 
 # API 応答待機
@@ -157,5 +157,5 @@ for i in $(seq 1 15); do
 done
 
 err "API が45秒以内に応答しませんでした"
-err "ログを確認: docker logs ${CONTAINER_NAME}"
+err "ログを確認: sudo docker logs ${CONTAINER_NAME}"
 exit 1

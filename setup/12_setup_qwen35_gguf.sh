@@ -78,7 +78,7 @@ read -rp "  番号を入力 (カンマ区切りで複数可, 例: 3,5): " choice
 case "$choice" in
   [Qq]) echo "キャンセルしました"; exit 0 ;;
   [Aa]) SELECTED=("${!MODELS[@]}") ;;
-  [Rr]) SELECTED=(2 4) ;;  # 2B-Q8_0 (index 3) + 4B-Q4_K_M (index 4)
+  [Rr]) SELECTED=(3 4) ;;  # 2B-Q8_0 (index 3) + 4B-Q4_K_M (index 4)
   *)
     IFS=',' read -ra nums <<< "$choice"
     for n in "${nums[@]}"; do
